@@ -56,6 +56,9 @@ train:
   # A fixed subset gives a per-epoch selection signal at a third of the cost.
   # evaluate.py reports the full-set number for the record.
   pq_subset: 60
+  # Heartbeat during an epoch. Without it a run is silent for minutes at a
+  # time, and a hung job looks identical to a slow one.
+  log_every_steps: 20
 
 postprocess:
   threshold: 0.5

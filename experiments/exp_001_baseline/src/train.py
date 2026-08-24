@@ -211,6 +211,18 @@ def main() -> None:
                 scheduler.step()
             running.append(loss.item() * cfg["train"]["grad_accum_steps"])
 
+            # Heartbeat. An epoch can run for minutes, and silence makes a hung
+            # job indistinguishable from a slow one, especially on a Kaggle
+            # kernel where the log is the only thing visible from outside.
+            every = cfg["train"]["log_every_steps"]
+            if every and (step + 1) % every == 0:
+                rate = (step + 1) / max(time.time() - started, 1e-6)
+                print(
+                    f"  e{epoch:03d} step {step + 1}/{len(train_loader)} "
+                    f"loss {np.mean(running[-every:]):.4f} {rate:.2f} it/s",
+                    flush=True,
+                )
+
         train_loss = float(np.mean(running))
         val_loss, val_dice = run_validation(model, val_loader, criterion, device)
         pq = evaluate_pq(model, cfg, split.val_image_ids, id_to_stem, device, subset=cfg["train"]["pq_subset"])

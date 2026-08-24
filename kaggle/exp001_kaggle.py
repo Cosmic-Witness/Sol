@@ -36,7 +36,32 @@ LOG_DIR = WORKING / "logs"
 OUT_DIR = WORKING / "outputs"
 
 COMPETITION = "filament-segmentation-2026"
-DATA_ROOT = Path(f"/kaggle/input/{COMPETITION}/MAGFiLO_1.0_Kaggle_2026")
+ANNOTATION_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
+
+
+def find_data_root() -> Path:
+    """Locate the competition data by searching for its annotation file.
+
+    Kaggle does not mount a competition where the obvious guess puts it. The
+    first run of this kernel assumed /kaggle/input/<slug>/ and died on a
+    FileNotFoundError; a probe kernel showed the real location is
+    /kaggle/input/competitions/<slug>/. Searching for a known filename removes
+    the guess entirely and survives any future change to the mount layout.
+    """
+    matches = sorted(Path("/kaggle/input").rglob(ANNOTATION_NAME))
+    if not matches:
+        available = [str(p) for p in Path("/kaggle/input").glob("*")]
+        raise SystemExit(
+            f"cannot find {ANNOTATION_NAME} under /kaggle/input. "
+            f"Is the competition attached? Top level holds: {available}"
+        )
+    # <root>/train/<annotation file>  ->  <root>
+    root = matches[0].parent.parent
+    print(f"data root discovered: {root}", flush=True)
+    return root
+
+
+DATA_ROOT = Path("/kaggle/input")  # replaced in main() by find_data_root()
 
 
 def run(command: list[str]) -> None:
@@ -73,7 +98,8 @@ def restore_previous_run() -> None:
     inside the 12-hour cap.
     """
     for candidate in sorted(Path("/kaggle/input").glob("*")):
-        if candidate.name == COMPETITION:
+        # "competitions" holds the read-only competition mount, never a prior run.
+        if candidate.name in (COMPETITION, "competitions"):
             continue
         for name, destination in (
             ("checkpoints", CKPT_DIR),
@@ -113,6 +139,8 @@ def write_config() -> Path:
 
 
 def main() -> None:
+    global DATA_ROOT
+    DATA_ROOT = find_data_root()
     report_environment()
 
     for directory in (CKPT_DIR, LOG_DIR, OUT_DIR):

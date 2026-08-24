@@ -1,0 +1,20 @@
+# Competition data — never committed. Fetched via `kaggle competitions download`.
+data/
+*.zip
+
+# Experiment artefacts
+experiments/**/checkpoints/
+experiments/**/logs/*.log
+experiments/**/outputs/*.csv
+best_submission.csv
+
+# Credentials — must never enter version control.
+kaggle.json
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/

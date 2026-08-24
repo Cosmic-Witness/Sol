@@ -1,0 +1,70 @@
+# Experiment 001 — baseline semantic segmentation, then connected components.
+# Every hyperparameter lives here. Nothing in src/ hardcodes a value.
+
+experiment: exp_001_baseline
+seed: 2026
+
+paths:
+  # Overridden on Colab to point at Google Drive. See notebooks/colab_exp001.ipynb.
+  data_root: data/MAGFiLO_1.0_Kaggle_2026
+  annotations: data/MAGFiLO_1.0_Annotations_kaggle2026_train.json
+  cache_dir: data/cache
+  checkpoint_dir: experiments/exp_001_baseline/checkpoints
+  log_dir: experiments/exp_001_baseline/logs
+  output_dir: experiments/exp_001_baseline/outputs
+
+data:
+  # Training resolution. The native frame is 2048; masks are upsampled back to
+  # 2048 at prediction time. 512 keeps a T4 inside its 16 GB budget.
+  image_size: 512
+  val_fraction: 0.15
+  num_workers: 2
+
+preprocess:
+  clahe_clip: 2.0
+  clahe_grid: 8
+  blur_sigma: 0.7
+
+model:
+  arch: unetplusplus          # segmentation_models_pytorch architecture name
+  encoder: efficientnet-b4
+  encoder_weights: imagenet
+  in_channels: 3              # grayscale is replicated; ImageNet stems expect 3
+  classes: 1
+
+loss:
+  # Filament pixels are roughly 1% of on-disk pixels, so plain BCE collapses to
+  # predicting background. Dice supplies the gradient that BCE cannot.
+  bce_weight: 0.5
+  dice_weight: 0.5
+  pos_weight: 8.0
+
+train:
+  epochs: 60
+  batch_size: 8
+  grad_accum_steps: 1
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  scheduler: cosine
+  warmup_epochs: 2
+  amp: true
+  # Free-tier Colab reclaims a runtime without warning. A checkpoint every epoch
+  # caps the cost of a disconnect at one epoch.
+  checkpoint_every_epoch: true
+  early_stopping_patience: 12
+  # Full-resolution PQ over all 180 validation records costs about 90 s.
+  # A fixed subset gives a per-epoch selection signal at a third of the cost.
+  # evaluate.py reports the full-set number for the record.
+  pq_subset: 60
+
+postprocess:
+  threshold: 0.5
+  # 1st-percentile ground-truth instance covers 208 px at 2048 scale.
+  min_area: 150
+  # Closing is DISABLED (kernel 1) on measured evidence, not on intuition.
+  # src/ceiling_analysis.py fed the ground truth through this exact path over 60
+  # validation records: closing 1 -> PQ 0.7642, closing 5 -> 0.7589, closing 9 ->
+  # 0.7481. Closing thickens a mask and costs more IoU than the fragments it
+  # rejoins are worth. Recognition quality is already 0.998 without it.
+  closing_kernel: 1
+  dilate_iterations: 0

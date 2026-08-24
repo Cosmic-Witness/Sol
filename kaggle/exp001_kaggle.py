@@ -30,7 +30,12 @@ BRANCH = "exp-001-baseline"
 REPO_DIR = Path("/kaggle/working/Sol")
 
 WORKING = Path("/kaggle/working")
-CACHE_DIR = WORKING / "cache"
+# The cache is thousands of small PNGs. Kept in /kaggle/working it bloats the
+# kernel output, and `kaggle kernels output` then takes so long that the run log
+# cannot be retrieved at all, which is exactly what blocked the last diagnosis.
+# It lives on scratch instead, and only its archive is published.
+CACHE_DIR = Path("/kaggle/temp/cache")
+CACHE_ARCHIVE = WORKING / "cache_512.zip"
 CKPT_DIR = WORKING / "checkpoints"
 LOG_DIR = WORKING / "logs"
 OUT_DIR = WORKING / "outputs"
@@ -103,13 +108,18 @@ def restore_previous_run() -> None:
             continue
         for name, destination in (
             ("checkpoints", CKPT_DIR),
-            ("cache", CACHE_DIR),
             ("logs", LOG_DIR),
         ):
             source = candidate / name
             if source.is_dir() and not destination.exists():
                 print(f"restoring {name} from {candidate.name}", flush=True)
                 shutil.copytree(source, destination)
+
+        archive = candidate / CACHE_ARCHIVE.name
+        if archive.is_file() and not CACHE_DIR.exists():
+            print(f"restoring cache archive from {candidate.name}", flush=True)
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.unpack_archive(str(archive), str(CACHE_DIR))
 
 
 def write_config() -> Path:
@@ -157,6 +167,13 @@ def main() -> None:
     config = write_config()
 
     run([sys.executable, "-m", "experiments.exp_001_baseline.src.prepare_cache", "--config", str(config)])
+    # Publish the cache as one file so the next run restores it without
+    # rebuilding, and so the output stays small enough to download quickly.
+    if not CACHE_ARCHIVE.exists():
+        print("archiving cache", flush=True)
+        shutil.make_archive(str(CACHE_ARCHIVE.with_suffix("")), "zip", str(CACHE_DIR))
+        print(f"cache archive: {CACHE_ARCHIVE.stat().st_size / 1e6:.1f} MB", flush=True)
+
     run([sys.executable, "-m", "experiments.exp_001_baseline.src.train", "--config", str(config)])
 
     best = CKPT_DIR / "best.pt"
@@ -170,11 +187,14 @@ def main() -> None:
          "--images", str(DATA_ROOT / "test/test_images"),
          "--output", str(OUT_DIR / "submission.csv"), "--tta"])
 
-    # The clone would otherwise be copied into the kernel output, which wastes
-    # space and confuses the next run's restore step.
-    shutil.rmtree(REPO_DIR, ignore_errors=True)
     print("\nDONE. submission at", OUT_DIR / "submission.csv", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # The clone would otherwise land in the kernel output, wasting space and
+        # confusing the next run's restore step. This runs on failure too, so a
+        # broken run still returns a small, fast-to-download output.
+        shutil.rmtree(REPO_DIR, ignore_errors=True)

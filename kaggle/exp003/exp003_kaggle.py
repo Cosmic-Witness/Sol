@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 import subprocess
 import sys
 from pathlib import Path
@@ -46,8 +47,18 @@ ANNOTATION_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
 MODEL = "yolo11l-seg.pt"
 IMGSZ = 2048
 EPOCHS = 300          # never reached; the time budget is the real stop condition
-BATCH = -1            # autobatch: largest that fits, measured not guessed
 TIME_BUDGET_HOURS = 10.75
+
+# Batch sizes to try, largest first. The first attempt errored with
+#   "AutoBatch with batch<1 not supported for Multi-GPU training"
+# because the session provides two T4s and batch=-1 cannot be split across them.
+# An explicit batch is required, and it must be a multiple of the GPU count.
+#
+# Rather than guess once and lose the session to an out-of-memory error hours in,
+# the ladder is tried in order and a memory failure falls through to the next
+# rung. 4 is the estimate: a 1280 run holds roughly batch 8 on one T4, and 2048
+# carries (2048/1280)^2 = 2.56x the pixels, so ~3 per GPU is the expected limit.
+BATCH_LADDER = (8, 4, 2)
 
 
 def run(command: list, cwd: Path | None = None) -> None:
@@ -115,14 +126,60 @@ def main() -> None:
 
     from ultralytics import YOLO
 
-    model = YOLO(MODEL)
+    n_devices = len(devices) if isinstance(devices, list) else 1
+    ladder = [b for b in BATCH_LADDER if b % n_devices == 0] or [n_devices]
+
+    # Each attempt is charged against one shared budget. Out-of-memory normally
+    # shows up in the first iterations, but if an attempt dies hours in, the next
+    # rung must not restart with a fresh 10.75 hours and overrun the session cap.
+    started = time.monotonic()
+
+    for position, batch in enumerate(ladder):
+        remaining = TIME_BUDGET_HOURS - (time.monotonic() - started) / 3600
+        if remaining < 0.5:
+            raise SystemExit(f"only {remaining:.2f} h left in the budget; not starting another attempt")
+        try:
+            print(f"\n=== training attempt {position + 1}/{len(ladder)}: batch={batch} "
+                  f"at imgsz {IMGSZ}, {remaining:.2f} h remaining ===", flush=True)
+            train_once(YOLO(MODEL), batch, devices, remaining)
+            break
+        except (RuntimeError, torch_oom()) as error:
+            if not is_out_of_memory(error) or position == len(ladder) - 1:
+                raise
+            print(f"out of memory at batch={batch}; falling back", flush=True)
+            free_gpu()
+
+    finish(data_root)
+
+
+def torch_oom():
+    import torch
+
+    return getattr(torch.cuda, "OutOfMemoryError", RuntimeError)
+
+
+def is_out_of_memory(error: Exception) -> bool:
+    return "out of memory" in str(error).lower() or "CUDA out of memory" in str(error)
+
+
+def free_gpu() -> None:
+    """Release cached blocks so the next rung starts from a clean allocator."""
+    import gc
+
+    import torch
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
+def train_once(model, batch: int, devices, budget_hours: float) -> None:
     model.train(
         data=str(DATASET_DIR / "data.yaml"),
         imgsz=IMGSZ,
         epochs=EPOCHS,
-        batch=BATCH,
+        batch=batch,
         device=devices,
-        time=TIME_BUDGET_HOURS,
+        time=budget_hours,
         project=str(RUNS_DIR),
         name="exp003",
         exist_ok=True,
@@ -140,6 +197,8 @@ def main() -> None:
         verbose=True,
     )
 
+
+def finish(data_root: Path) -> None:
     best = RUNS_DIR / "exp003" / "weights" / "best.pt"
     if not best.exists():
         raise SystemExit(f"training produced no checkpoint at {best}")

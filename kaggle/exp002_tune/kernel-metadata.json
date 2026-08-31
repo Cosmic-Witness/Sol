@@ -1,0 +1,20 @@
+{
+  "id": "cosmicwitness/sol-exp002-tune",
+  "title": "Sol exp002 tune",
+  "code_file": "tune_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [
+    "filament-segmentation-2026"
+  ],
+  "kernel_sources": [
+    "cosmicwitness/sol-exp002-yolo-seg"
+  ],
+  "model_sources": []
+}

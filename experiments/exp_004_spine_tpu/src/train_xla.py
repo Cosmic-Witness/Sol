@@ -1,35 +1,33 @@
-"""Train a high-resolution segmentation model on Kaggle's TPU via torch_xla.
+"""Train a high-resolution segmentation model across all 8 TPU cores via SPMD.
 
-Why a dense model, and why TPU
+Why SPMD rather than xmp.spawn
 ------------------------------
-Ultralytics carries no torch_xla support — its `select_device` accepts only cpu,
-cuda and mps — so YOLO cannot use a TPU at all. Continuing on TPU means a dense
-architecture, and the ablation in `spine_ablation.py` shows that is not the
-compromise it first appears: connected components recover ground-truth instances
-at PQ 1.000 when the mask is accurate. Decomposition was never the bottleneck.
-Mask precision is, and mask precision is bought with resolution, capacity and
-epochs — all of which a TPU supplies.
+Kaggle's TPU VM is a v5litepod-8 that exports both a legacy XRT_TPU_CONFIG and
+PJRT_DEVICE=TPU. Under that configuration `xmp.spawn` dies during TPU init with
+"Expected 8 worker addresses, got 1", and with a BrokenProcessPool once the XRT
+variable is removed — multiprocessing is simply not viable here.
 
-Sharp edges of XLA that this file is written around
----------------------------------------------------
-- Every distinct tensor shape triggers a fresh compilation, so batches are of
-  fixed size and the final short batch of an epoch is dropped rather than
-  padded.
-- `.item()`, `print(loss)` and any host read force a graph execution and stall
-  the pipeline. Running losses are accumulated on device and read once per
-  epoch.
-- Gradient updates go through `xm.optimizer_step`, which performs the
-  cross-replica all-reduce; a bare `optimizer.step()` silently trains eight
-  independent models.
-- Checkpoints are written by the master ordinal only, with `xm.save`, and land
-  under /kaggle/working so an interrupted session keeps its epochs.
+It is also unnecessary. A single process on this VM already sees every core:
+`xr.global_runtime_device_count()` returns 8 and the devices enumerate as xla:0
+through xla:7. SPMD shards each batch across them from one process, which needs
+no launcher, no distributed sampler, and no rank-aware checkpointing, and leaves
+one ordinary Python process to reason about.
+
+Sharp edges of XLA this is written around
+-----------------------------------------
+- Each distinct tensor shape triggers a recompilation, so batches are fixed size
+  and the trailing short batch of an epoch is dropped.
+- `.item()` forces the graph to execute and stalls the pipeline; running losses
+  accumulate on device and are read once per epoch.
+- The global batch must divide by the device count, or sharding fails.
+- Checkpoints go to /kaggle/working. exp_003 lost 1.5 h because its checkpoints
+  were on /kaggle/temp, which is not part of the kernel output.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import time
 from pathlib import Path
 
@@ -39,17 +37,13 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
 import torch_xla.core.xla_model as xm
-import torch_xla.distributed.parallel_loader as pl
-import torch_xla.distributed.xla_multiprocessing as xmp
+import torch_xla.distributed.spmd as xs
+import torch_xla.runtime as xr
+from torch_xla.distributed.spmd import Mesh
 
 
 class CachedSet(Dataset):
-    """Reads the memmapped cache built by prepare.py.
-
-    The arrays are opened lazily per worker: a memmap captured in the parent and
-    inherited through fork gives every worker the same file offset and produces
-    silently corrupted reads under load.
-    """
+    """Reads the memmapped 1024px cache built by prepare.py."""
 
     def __init__(self, root: str, fold: str, augment: bool):
         self.root, self.fold, self.augment = Path(root), fold, augment
@@ -57,6 +51,8 @@ class CachedSet(Dataset):
         self.length = len(json.loads((self.root / f"{fold}_ids.json").read_text()))
 
     def _open(self):
+        # Opened lazily per worker: a memmap inherited through fork shares its
+        # file offset across workers and yields corrupted reads under load.
         if self._image is None:
             self._image = np.load(self.root / f"{self.fold}_image.npy", mmap_mode="r")
             self._mask = np.load(self.root / f"{self.fold}_mask.npy", mmap_mode="r")
@@ -70,8 +66,8 @@ class CachedSet(Dataset):
         mask = np.asarray(self._mask[index], dtype=np.float32)
 
         if self.augment:
-            # Flips and 90-degree rotations only: they are exact, they need no
-            # interpolation, and the annotation convention has no up direction.
+            # Flips and right-angle rotations are exact: no interpolation, and
+            # the annotation convention has no canonical up direction.
             if np.random.rand() < 0.5:
                 image, mask = image[:, ::-1], mask[:, ::-1]
             if np.random.rand() < 0.5:
@@ -81,9 +77,8 @@ class CachedSet(Dataset):
                 image, mask = np.rot90(image, k), np.rot90(mask, k)
             image = np.clip(image * np.random.uniform(0.85, 1.15), 0.0, 1.0)
 
-        image = np.ascontiguousarray(image)[None]          # 1 x H x W
-        return torch.from_numpy(np.repeat(image, 3, 0)), torch.from_numpy(
-            np.ascontiguousarray(mask))[None]
+        image = np.repeat(np.ascontiguousarray(image)[None], 3, 0)
+        return torch.from_numpy(image), torch.from_numpy(np.ascontiguousarray(mask))[None]
 
 
 def build_model(encoder: str):
@@ -94,8 +89,7 @@ def build_model(encoder: str):
 
 
 def dice_bce(logits, target, pos_weight):
-    bce = nn.functional.binary_cross_entropy_with_logits(
-        logits, target, pos_weight=pos_weight)
+    bce = nn.functional.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight)
     probability = torch.sigmoid(logits)
     intersection = (probability * target).sum((1, 2, 3))
     union = probability.sum((1, 2, 3)) + target.sum((1, 2, 3))
@@ -103,90 +97,97 @@ def dice_bce(logits, target, pos_weight):
     return 0.5 * bce + 0.5 * dice
 
 
-def _worker(index: int, flags: dict):
-    torch.manual_seed(flags["seed"])
-    device = xm.xla_device()
-
-    train_set = CachedSet(flags["cache"], "train", augment=True)
-    val_set = CachedSet(flags["cache"], "val", augment=False)
-
-    def loader_for(dataset, shuffle):
-        sampler = torch.utils.data.distributed.DistributedSampler(
-            dataset, num_replicas=xm.xrt_world_size(), rank=xm.get_ordinal(),
-            shuffle=shuffle, drop_last=True)
-        return DataLoader(dataset, batch_size=flags["batch"], sampler=sampler,
-                          num_workers=flags["workers"], drop_last=True)
-
-    train_loader, val_loader = loader_for(train_set, True), loader_for(val_set, False)
-
-    model = build_model(flags["encoder"]).to(device)
-    optimiser = torch.optim.AdamW(model.parameters(), lr=flags["lr"], weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=flags["epochs"])
-    pos_weight = torch.tensor(flags["pos_weight"], device=device)
-
-    checkpoint_dir = Path(flags["out"])
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    best = float("inf")
-    started = time.time()
-
-    for epoch in range(flags["epochs"]):
-        model.train()
-        running, batches = torch.zeros((), device=device), 0
-        for images, masks in pl.MpDeviceLoader(train_loader, device):
-            optimiser.zero_grad()
-            loss = dice_bce(model(images), masks, pos_weight)
-            loss.backward()
-            xm.optimizer_step(optimiser)
-            running += loss.detach()      # stays on device; no host sync
-            batches += 1
-        scheduler.step()
-
-        model.eval()
-        val_running, val_batches = torch.zeros((), device=device), 0
-        with torch.no_grad():
-            for images, masks in pl.MpDeviceLoader(val_loader, device):
-                val_running += dice_bce(model(images), masks, pos_weight).detach()
-                val_batches += 1
-
-        # One host read per epoch, after the graph has run.
-        train_loss = xm.mesh_reduce("tl", (running / max(batches, 1)).item(), np.mean)
-        val_loss = xm.mesh_reduce("vl", (val_running / max(val_batches, 1)).item(), np.mean)
-
-        if xm.is_master_ordinal():
-            elapsed = (time.time() - started) / 60
-            print(f"epoch {epoch + 1:03d} | train {train_loss:.4f} | val {val_loss:.4f} "
-                  f"| {elapsed:.1f} min", flush=True)
-
-        if val_loss < best:
-            best = val_loss
-            xm.save(model.state_dict(), str(checkpoint_dir / "best.pt"))
-        xm.save(model.state_dict(), str(checkpoint_dir / "last.pt"))
-
-        if (time.time() - started) / 3600 > flags["time_budget"]:
-            if xm.is_master_ordinal():
-                print(f"time budget reached at epoch {epoch + 1}", flush=True)
-            break
-
-    if xm.is_master_ordinal():
-        print(f"finished. best val loss {best:.4f}", flush=True)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--encoder", default="resnet34")
-    parser.add_argument("--epochs", type=int, default=200)
-    parser.add_argument("--batch", type=int, default=2)
+    parser.add_argument("--epochs", type=int, default=300)
+    parser.add_argument("--batch", type=int, default=16, help="global batch; must divide by device count")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--pos-weight", type=float, default=8.0)
-    parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--time-budget", type=float, default=7.0)
     args = parser.parse_args()
 
-    os.environ.setdefault("PJRT_DEVICE", "TPU")
-    xmp.spawn(_worker, args=(vars(args),))
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+
+    xr.use_spmd()
+    n_devices = xr.global_runtime_device_count()
+    device = xm.xla_device()
+    print(f"SPMD across {n_devices} devices, global batch {args.batch}", flush=True)
+    if args.batch % n_devices:
+        raise SystemExit(f"batch {args.batch} must divide by {n_devices} devices")
+
+    # Data-parallel mesh: shard the batch dimension, replicate everything else.
+    mesh = Mesh(np.arange(n_devices), (n_devices, 1, 1, 1), ("data", "c", "h", "w"))
+
+    train_loader = DataLoader(CachedSet(args.cache, "train", True), batch_size=args.batch,
+                              shuffle=True, num_workers=args.workers, drop_last=True)
+    val_loader = DataLoader(CachedSet(args.cache, "val", False), batch_size=args.batch,
+                            shuffle=False, num_workers=args.workers, drop_last=True)
+
+    model = build_model(args.encoder).to(device)
+    optimiser = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=args.epochs)
+    pos_weight = torch.tensor(args.pos_weight, device=device)
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    best = float("inf")
+    started = time.time()
+
+    for epoch in range(args.epochs):
+        model.train()
+        running, batches = torch.zeros((), device=device), 0
+        for images, masks in train_loader:
+            images, masks = images.to(device), masks.to(device)
+            xs.mark_sharding(images, mesh, ("data", "c", "h", "w"))
+            xs.mark_sharding(masks, mesh, ("data", "c", "h", "w"))
+
+            optimiser.zero_grad()
+            loss = dice_bce(model(images), masks, pos_weight)
+            loss.backward()
+            optimiser.step()
+            xm.mark_step()
+            running += loss.detach()
+            batches += 1
+
+        scheduler.step()
+
+        model.eval()
+        val_running, val_batches = torch.zeros((), device=device), 0
+        with torch.no_grad():
+            for images, masks in val_loader:
+                images, masks = images.to(device), masks.to(device)
+                xs.mark_sharding(images, mesh, ("data", "c", "h", "w"))
+                xs.mark_sharding(masks, mesh, ("data", "c", "h", "w"))
+                val_running += dice_bce(model(images), masks, pos_weight).detach()
+                xm.mark_step()
+                val_batches += 1
+
+        train_loss = (running / max(batches, 1)).item()
+        val_loss = (val_running / max(val_batches, 1)).item()
+        elapsed_h = (time.time() - started) / 3600
+        print(f"epoch {epoch + 1:03d} | train {train_loss:.4f} | val {val_loss:.4f} "
+              f"| {elapsed_h * 60:.1f} min", flush=True)
+
+        # Saved every epoch so an interrupted session keeps its work. CPU tensors,
+        # so the checkpoint loads without a TPU present.
+        state = {k: v.cpu() for k, v in model.state_dict().items()}
+        torch.save(state, out_dir / "last.pt")
+        if val_loss < best:
+            best = val_loss
+            torch.save(state, out_dir / "best.pt")
+            print(f"  new best {best:.4f}", flush=True)
+
+        if elapsed_h > args.time_budget:
+            print(f"time budget reached at epoch {epoch + 1}", flush=True)
+            break
+
+    print(f"finished. best val loss {best:.4f}", flush=True)
 
 
 if __name__ == "__main__":

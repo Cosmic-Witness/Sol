@@ -37,7 +37,7 @@ ANNOTATION_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
 SIZE = 1024
 ENCODER = "resnet34"
 EPOCHS = 300
-BATCH = 2               # per core; eight cores give an effective batch of 16
+BATCH = 16              # global batch across 8 cores; must divide by device count
 TIME_BUDGET_HOURS = 7.0
 
 

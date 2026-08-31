@@ -44,7 +44,14 @@ OUT_DIR = WORKING / "outputs"
 
 ANNOTATION_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
 
-MODEL = "yolo11m-seg.pt"
+# Progressive resizing: exp_003 continues exp_002 rather than restarting.
+# exp_002 reached its best mask mAP50 at epoch 149 of 149 and was still
+# improving when the clock stopped it, so its weights are a far better starting
+# point than COCO pretraining. Starting fresh at 2048 would also buy fewer
+# epochs per hour, so a from-scratch run would be compared against exp_002 while
+# undertrained relative to it, and the resolution question would go unanswered.
+# FALLBACK_MODEL is used only if no exp_002 checkpoint is attached.
+FALLBACK_MODEL = "yolo11m-seg.pt"
 IMGSZ = 2048
 EPOCHS = 300          # never reached; the time budget is the real stop condition
 TIME_BUDGET_HOURS = 10.75
@@ -66,6 +73,16 @@ def run(command: list, cwd: Path | None = None) -> None:
     result = subprocess.run([str(c) for c in command], cwd=str(cwd) if cwd else None)
     if result.returncode != 0:
         raise SystemExit(f"step failed with code {result.returncode}")
+
+
+def find_start_weights() -> str:
+    """Prefer exp_002's checkpoint; fall back to COCO pretraining."""
+    candidates = sorted(Path("/kaggle/input").rglob("best.pt"))
+    if candidates:
+        print(f"resuming from {candidates[0]}", flush=True)
+        return str(candidates[0])
+    print(f"no attached checkpoint; starting from {FALLBACK_MODEL}", flush=True)
+    return FALLBACK_MODEL
 
 
 def find_data_root() -> Path:
@@ -126,6 +143,7 @@ def main() -> None:
 
     from ultralytics import YOLO
 
+    start_weights = find_start_weights()
     n_devices = len(devices) if isinstance(devices, list) else 1
     ladder = [b for b in BATCH_LADDER if b % n_devices == 0] or [n_devices]
 
@@ -141,7 +159,7 @@ def main() -> None:
         try:
             print(f"\n=== training attempt {position + 1}/{len(ladder)}: batch={batch} "
                   f"at imgsz {IMGSZ}, {remaining:.2f} h remaining ===", flush=True)
-            train_once(YOLO(MODEL), batch, devices, remaining)
+            train_once(YOLO(start_weights), batch, devices, remaining)
             break
         except (RuntimeError, subprocess.CalledProcessError, torch_oom()) as error:
             if not is_out_of_memory(error) or position == len(ladder) - 1:
@@ -214,6 +232,8 @@ def train_once(model, batch: int, devices, budget_hours: float) -> None:
         # destroying the radial context that limb-darkening correction relies on.
         mosaic=0.0,
         patience=50,
+        lr0=0.0005,
+        warmup_epochs=1.0,
         seed=2026,
         verbose=True,
     )

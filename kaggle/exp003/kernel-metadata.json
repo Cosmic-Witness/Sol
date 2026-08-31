@@ -13,6 +13,8 @@
   "competition_sources": [
     "filament-segmentation-2026"
   ],
-  "kernel_sources": [],
+  "kernel_sources": [
+    "cosmicwitness/sol-exp002-yolo-seg"
+  ],
   "model_sources": []
 }

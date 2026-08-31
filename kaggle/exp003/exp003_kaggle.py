@@ -37,7 +37,14 @@ WORKING = Path("/kaggle/working")
 SCRATCH = Path("/kaggle/temp")
 REPO_DIR = SCRATCH / "Sol"
 DATASET_DIR = SCRATCH / "yolo_dataset"
-RUNS_DIR = SCRATCH / "runs"
+# Checkpoints must live under /kaggle/working, not scratch. Ultralytics writes
+# them every epoch, but only /kaggle/working survives as the kernel output —
+# so with runs on scratch, a session killed by the time cap or cancelled
+# by hand loses every epoch it ran. That is exactly what happened when this
+# run was stopped for higher-priority work: 1.5 h of 2048 fine-tuning was
+# unrecoverable. It also forced training budgets to be set well under the
+# session limit purely as insurance, wasting hours of usable compute.
+RUNS_DIR = WORKING / "runs"
 
 CKPT_DIR = WORKING / "checkpoints"
 OUT_DIR = WORKING / "outputs"

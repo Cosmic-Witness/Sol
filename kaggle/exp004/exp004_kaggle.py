@@ -59,18 +59,25 @@ def find_data_root() -> Path:
 
 
 def report_environment() -> None:
+    """Report the environment WITHOUT touching the TPU.
+
+    The TPU is a single vfio device that exactly one process may hold. Calling
+    xm.xla_device() here claimed it for this driver, and the training subprocess
+    then died with "open(/dev/vfio/0): Device or resource busy" followed by
+    "InitializeComputationClient() can only be called once". Importing
+    torch_xla at all in the parent risks initialising the runtime, so the parent
+    reports only what it can see without it and leaves the device untouched for
+    the trainer.
+    """
     print("=" * 70, flush=True)
     import torch
 
     print(f"torch {torch.__version__}", flush=True)
-    try:
-        import torch_xla
-        import torch_xla.core.xla_model as xm
-
-        print(f"torch_xla {getattr(torch_xla, '__version__', '?')}", flush=True)
-        print(f"xla device {xm.xla_device()}", flush=True)
-    except Exception as error:  # noqa: BLE001
-        raise SystemExit(f"no TPU runtime: {error}")
+    for key in ("PJRT_DEVICE", "TPU_ACCELERATOR_TYPE", "TPU_WORKER_ID"):
+        print(f"{key}={os.environ.get(key)}", flush=True)
+    if os.environ.get("PJRT_DEVICE") != "TPU":
+        raise SystemExit("no TPU runtime: PJRT_DEVICE is not TPU")
+    print("TPU left uninitialised for the training process", flush=True)
     print("=" * 70, flush=True)
 
 

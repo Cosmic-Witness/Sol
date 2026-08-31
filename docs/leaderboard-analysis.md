@@ -109,3 +109,34 @@ would have read far higher than the leaderboard.
 The score itself is what a semantic-then-split design is worth on this task. See
 `experiments/exp_001_baseline/RESULTS.md` for why recognition rather than mask
 quality is the binding term.
+
+## exp_002 — YOLO instance segmentation, yolo11m-seg @ 1280
+
+| | |
+|---|---|
+| Epochs | 149 (time-capped at 8.5 h, **not converged**) |
+| Mask mAP50 / mAP50-95 | 0.709 / 0.284 |
+| **Public LB** | **0.32** |
+| Rank | ~227 / 467 (top 49%) |
+| Submission | 55917111 |
+
+Moving from semantic-plus-connected-components to direct instance segmentation
+bought **+0.06** (0.26 -> 0.32) and moved 91 places. The direction is right and
+the margin is smaller than hoped.
+
+Two things are known to be left on the table, and neither is an architecture
+problem:
+
+- **The run is undertrained.** Best mask mAP50 came at epoch 149 of 149 and was
+  still rising over the final thirty epochs. The clock stopped it mid-climb.
+- **The confidence threshold is untuned.** 0.25 was inherited as a guess. Under
+  PQ, confidence trades false positives against false negatives directly, and
+  the sweep has not run yet.
+
+## Standing assessment
+
+0.32 sits 0.08 below the honest frontier and 0.23 below the leaderboard's top
+cluster. Threshold tuning and resolution are each plausibly worth a few
+hundredths, so approaching 0.40 is realistic and clearing it is not assured.
+Reaching 0.55 by modelling is not in view from here, which is consistent with
+this document's opening argument that 0.55 is not a modelling result.

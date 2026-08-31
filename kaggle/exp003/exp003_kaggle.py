@@ -64,7 +64,7 @@ EPOCHS = 300          # never reached; the time budget is the real stop conditio
 # 9.38 h of weekly quota remain. 7.0 h of training leaves room for dataset
 # preparation, prediction over 180 images at 2048, and the output upload,
 # without risking the run being killed by quota exhaustion mid-epoch.
-TIME_BUDGET_HOURS = 7.0
+TIME_BUDGET_HOURS = 6.0
 
 # Batch sizes to try, largest first. The first attempt errored with
 #   "AutoBatch with batch<1 not supported for Multi-GPU training"

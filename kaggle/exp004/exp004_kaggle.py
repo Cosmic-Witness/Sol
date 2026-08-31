@@ -88,7 +88,7 @@ def main() -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
     run([sys.executable, "-m", "pip", "install", "-q",
-         "segmentation-models-pytorch", "opencv-python-headless"])
+         "segmentation-models-pytorch", "opencv-python-headless", "pycocotools"])
 
     if not REPO_DIR.exists():
         run(["git", "clone", "--depth", "1", "--branch", BRANCH, REPO_URL, REPO_DIR])

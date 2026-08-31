@@ -140,3 +140,48 @@ cluster. Threshold tuning and resolution are each plausibly worth a few
 hundredths, so approaching 0.40 is realistic and clearing it is not assured.
 Reaching 0.55 by modelling is not in view from here, which is consistent with
 this document's opening argument that 0.55 is not a modelling result.
+
+## Threshold tuning is exhausted (negative result)
+
+The sweep over exp_002 ran 7 confidence values x 3 minimum areas on the
+validation fold:
+
+| conf | min_area | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|---|
+| 0.30 | 300 | **0.3736** | 0.6432 | 0.5807 | 721 | 437 | 604 |
+| 0.25 | 150 | 0.3714 | 0.6426 | 0.5779 | 751 | 523 | 574 |
+| 0.40 | 150 | 0.3657 | 0.6475 | 0.5647 | 626 | 266 | 699 |
+| 0.20 | 300 | 0.3629 | 0.6411 | 0.5660 | 780 | 651 | 545 |
+
+Best is conf 0.30 / min_area 300 at PQ 0.3736, against 0.3714 for the inherited
+default. **The whole knob is worth +0.0022** — within noise, and not worth a
+submission slot. The surface is flat because PQ charges a false positive and a
+false negative the same half unit, so trading one for the other moves the
+numerator and denominator almost together.
+
+This closes off post-processing as a source of gains and points at the real
+constraint.
+
+## The binding constraint is recall, and it is a resolution problem
+
+Comparing the two experiments at their best settings:
+
+| | PQ | SQ | RQ |
+|---|---|---|---|
+| exp_001 semantic + CC | 0.2957 | 0.629 | 0.470 |
+| exp_002 instance seg | 0.3736 | 0.643 | 0.581 |
+
+Instance segmentation delivered exactly what was predicted of it: **+24% on
+recognition**, with segmentation quality unchanged. The remaining shortfall is
+also recognition, but of a different kind.
+
+At conf 0.20 — the most permissive setting swept, already past the point where
+added false positives cost more than the recovered detections are worth — there
+are still **545 false negatives out of 1325 ground-truth instances**. Roughly
+40% of filaments are not detected at *any* threshold. They are not being scored
+away in post-processing; the model never proposes them.
+
+Filament barbs are a few pixels wide at 2048 and sub-pixel at 1280. A structure
+that has been resampled below the detector's stride cannot be recovered by
+lowering a threshold. That is the case for exp_003 at full resolution, and it is
+now an argument from measurement rather than from expectation.

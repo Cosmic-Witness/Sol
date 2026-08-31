@@ -26,7 +26,10 @@ import sys
 from pathlib import Path
 
 REPO_URL = "https://github.com/Cosmic-Witness/Sol"
-BRANCH = "exp-001-baseline"
+# The kernel trains from whatever this branch holds, so iterating means
+# pushing here and re-pushing the kernel. Point it back at exp-001-baseline
+# once this work merges.
+BRANCH = "claude/kaggle-credentials-setup-f7nudy"
 REPO_DIR = Path("/kaggle/working/Sol")
 
 WORKING = Path("/kaggle/working")

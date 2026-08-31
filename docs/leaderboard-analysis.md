@@ -85,3 +85,27 @@ mask happens to be last in the raw output rather than to the most confident one.
 The architectural lesson is worth taking regardless of the defect: the strongest
 public approach predicts instances directly rather than segmenting semantically
 and splitting on connectivity. That agrees with exp_001's own measured ceiling.
+
+
+---
+
+# Results log
+
+## exp_001 — U-Net++ semantic + connected components
+
+| | |
+|---|---|
+| Validation PQ | 0.2957 |
+| **Public LB** | **0.26** |
+| Rank | ~314 / 466 (13 teams tied at 0.26) |
+| Submission | 55911499 |
+
+The validation-to-leaderboard gap is 0.036, small enough that **the validation
+fold can be trusted as a proxy**. That matters more than the score itself: it
+means thresholds and architectures can be compared offline without spending
+submissions, and the grouped split is doing its job — had it leaked, validation
+would have read far higher than the leaderboard.
+
+The score itself is what a semantic-then-split design is worth on this task. See
+`experiments/exp_001_baseline/RESULTS.md` for why recognition rather than mask
+quality is the binding term.

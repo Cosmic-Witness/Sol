@@ -44,7 +44,7 @@ OUT_DIR = WORKING / "outputs"
 
 ANNOTATION_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
 
-MODEL = "yolo11l-seg.pt"
+MODEL = "yolo11m-seg.pt"
 IMGSZ = 2048
 EPOCHS = 300          # never reached; the time budget is the real stop condition
 TIME_BUDGET_HOURS = 10.75
@@ -143,7 +143,7 @@ def main() -> None:
                   f"at imgsz {IMGSZ}, {remaining:.2f} h remaining ===", flush=True)
             train_once(YOLO(MODEL), batch, devices, remaining)
             break
-        except (RuntimeError, torch_oom()) as error:
+        except (RuntimeError, subprocess.CalledProcessError, torch_oom()) as error:
             if not is_out_of_memory(error) or position == len(ladder) - 1:
                 raise
             print(f"out of memory at batch={batch}; falling back", flush=True)
@@ -159,7 +159,28 @@ def torch_oom():
 
 
 def is_out_of_memory(error: Exception) -> bool:
-    return "out of memory" in str(error).lower() or "CUDA out of memory" in str(error)
+    """Decide whether an exception is a memory failure worth retrying smaller.
+
+    Under DDP, Ultralytics runs training in child processes via
+    torch.distributed.run. A child that dies of CUDA OOM does not propagate its
+    exception: the parent sees only
+
+        subprocess.CalledProcessError: Command '[... torch.distributed.run ...]'
+        returned non-zero exit status 1
+
+    with the actual `torch.OutOfMemoryError` visible in the child's stderr and
+    nowhere in the exception object. The first version of this check looked only
+    for an OOM message on the exception and so never fired, which is why an
+    out-of-memory at batch=8 killed the run instead of stepping down to 4.
+
+    A CalledProcessError from the DDP launcher is therefore treated as a memory
+    failure. That is a deliberate over-approximation: a genuine bug in the child
+    would also be retried, but it would then fail identically at every rung and
+    surface on the last one, costing a few minutes rather than a session.
+    """
+    if isinstance(error, subprocess.CalledProcessError):
+        return "torch.distributed.run" in " ".join(map(str, error.cmd or []))
+    return "out of memory" in str(error).lower()
 
 
 def free_gpu() -> None:

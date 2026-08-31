@@ -185,3 +185,40 @@ Filament barbs are a few pixels wide at 2048 and sub-pixel at 1280. A structure
 that has been resampled below the detector's stride cannot be recovered by
 lowering a threshold. That is the case for exp_003 at full resolution, and it is
 now an argument from measurement rather than from expectation.
+
+## Spine seeding does not help (negative result)
+
+Every one of the 8199 annotations carries a `spine` polyline, and the plan was
+to predict it alongside the mask so instance identity could be seeded from
+spines rather than inferred from mask connectivity. The stated motivation was
+that one filament broken into several patches still has one spine.
+
+Measured before spending TPU quota, by degrading ground-truth masks and scoring
+both decompositions against the true instances
+(`experiments/exp_004_spine_tpu/src/spine_ablation.py`):
+
+| erosion | pred/true ratio | CC PQ | spine PQ | delta |
+|---|---|---|---|---|
+| 0 | 1.00 | 1.0000 | 1.0000 | +0.0000 |
+| 3 | 0.99 | 0.8947 | 0.8952 | +0.0005 |
+| 5 | 0.80 | 0.5059 | 0.5058 | -0.0001 |
+| 7 | 0.66 | 0.2875 | 0.2874 | -0.0001 |
+
+The idea is worth nothing here, and the ablation shows why the premise was
+wrong. Under erosion the predicted-to-true ratio falls rather than rises: the
+degradation destroys small filaments instead of splitting large ones, so it
+never reproduced fragmentation to begin with.
+
+Checking the real numbers rather than the story: exp_001 emitted **8.6**
+instances per image against **7.4** in the ground truth, a ratio of 1.16. That
+is mild over-segmentation, not the rampant fragmentation the earlier write-up
+asserted. The claim that "one filament rendered as two is triply penalised" was
+a plausible mechanism promoted to a finding without being tested, and it is
+withdrawn.
+
+**The corrected diagnosis.** Matched predictions score SQ 0.63, yet only about
+half of predictions and half of the ground truth match at all. Instances are
+being emitted in roughly the right number and the right places, and are simply
+not accurate enough to clear the IoU 0.5 threshold. That is mask precision, and
+resolution and model capacity are what move it — which is what exp_003 was
+built to test and what remains untested.

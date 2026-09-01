@@ -267,3 +267,52 @@ exp_003, a 2048 fine-tune of exp_002's weights, which keeps the architecture
 that demonstrably wins and adds the resolution that the dense line could not
 exploit but an instance model may. It needs roughly 6 h of GPU. 4.6 h remain,
 and GPU is reserved for other work.
+
+## Center/offset grouping also fails its ablation (negative result)
+
+exp_004's conclusion — that predicting instances directly beats inferring them —
+suggested a dense model could still win if its *decoder* predicted instances:
+a center heatmap plus per-pixel offsets, the Panoptic-DeepLab formulation, which
+is all fixed-shape dense maps and so suits a TPU.
+
+Measured first (`exp_005_center_offset/src/grouping_ablation.py`), with noise
+added to the offsets to imitate an imperfect network:
+
+| offset noise (px) | CC PQ | CC RQ | center/offset PQ | center/offset RQ | delta |
+|---|---|---|---|---|---|
+| 0 | 0.9995 | 1.000 | 1.0000 | 1.000 | +0.0005 |
+| 5 | 0.9995 | 1.000 | 0.9938 | 0.997 | -0.0057 |
+| 15 | 0.9995 | 1.000 | 0.9694 | 0.989 | -0.0301 |
+| 30 | 0.9995 | 1.000 | 0.8336 | 0.932 | -0.1658 |
+
+Grouping degrades steeply once offsets are wrong by a realistic margin, and a
+trained network's offsets will be wrong by a realistic margin.
+
+The ablation also shares the defect that made the spine result and the
+fragmentation story misleading: **on ground-truth masks connected components
+already score 0.9995, so there is no headroom for any decoder to demonstrate a
+gain.** Every ablation of this shape is structurally incapable of showing what it
+is meant to show. Only predicted masks can settle a decoder question, and
+obtaining those costs a training run.
+
+Three decoder ideas have now been tested against ground truth — closing, spine
+seeding, center/offset — and all three measured at or below zero. Combined with
+exp_004 scoring 0.28 after converging at double resolution, the conclusion is
+that **the dense line is finished at roughly 0.28**, and no post-hoc decoder
+recovers the gap to 0.32.
+
+## Why work stopped here rather than continuing on TPU
+
+16.9 h of TPU quota remained and was deliberately not spent.
+
+The only remaining idea with positive evidence is exp_003: a 2048 fine-tune of
+exp_002's weights, keeping the architecture that measurably wins. It requires
+GPU, which is reserved for other work and has 4.66 h left against roughly 6 h
+needed.
+
+The TPU-viable alternative would be implementing an instance architecture that
+runs under torch_xla — SOLO or CondInst, both dense and fixed-shape. That is a
+from-scratch implementation trained on 974 images, competing against a
+COCO-pretrained yolo11m that already scores 0.32. It would very probably lose,
+and committing 16 h of someone's quota to a hypothesis this repository's own
+ablations do not support is the mistake that has already been made twice here.

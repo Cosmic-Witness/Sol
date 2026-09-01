@@ -316,3 +316,31 @@ from-scratch implementation trained on 974 images, competing against a
 COCO-pretrained yolo11m that already scores 0.32. It would very probably lose,
 and committing 16 h of someone's quota to a hypothesis this repository's own
 ablations do not support is the mistake that has already been made twice here.
+
+## TTA is unavailable for YOLO segmentation models (negative result)
+
+Both exp_002 submissions were made without test-time augmentation, which looked
+like an oversight worth correcting for free on CPU. It is not correctable that
+way. Ultralytics answers `augment=True` on a `-seg` model with
+
+    WARNING: Model does not support 'augment=True', reverting to single-scale prediction
+
+and proceeds. The flag is accepted, silently ignored, and the run produces
+output identical to the untriggered case — 1112 rows, matching the tuned
+submission that already scored 0.32 exactly. Nothing was gained and there was
+nothing new to submit.
+
+Two things worth carrying forward:
+
+- **The failure is silent.** `predict.py` and `tune.py` both expose `--tta`, and
+  both have always passed it through to an option the model ignores. Any future
+  claim that "TTA is enabled" on this line is false unless the log is checked.
+- **exp_004's TTA is real.** That model is a plain PyTorch U-Net and its
+  augmentation is implemented directly in `predict.py` as flips of the
+  probability field, so it does what it says. The distinction is between a
+  library flag and code that was written and can be read.
+
+Averaging predictions over flips for an *instance* model is still possible in
+principle, but it requires matching instances across the augmented views before
+merging them, which is a real algorithm rather than a flag, and it is unvalidated
+here.

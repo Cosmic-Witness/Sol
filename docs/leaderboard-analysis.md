@@ -222,3 +222,48 @@ being emitted in roughly the right number and the right places, and are simply
 not accurate enough to clear the IoU 0.5 threshold. That is mask precision, and
 resolution and model capacity are what move it — which is what exp_003 was
 built to test and what remains untested.
+
+## exp_004 — dense segmentation at 1024, trained to convergence on TPU
+
+| | |
+|---|---|
+| Architecture | U-Net, resnet34 encoder, 1024px, TTA |
+| Hardware | TPU v5litepod-8, single process, SPMD across 8 cores |
+| Epochs | **300, converged** — val loss flat at 0.1813-0.1815 over the last five |
+| Wall clock | 3.8 h (1.4 min/epoch, against the T4's 3.4 min/epoch at 1280) |
+| Instances/image | 9.50, against roughly 7.4 in the ground truth |
+| **Public LB** | **0.28** |
+
+## The architecture is the ceiling, not the training budget
+
+| run | architecture | training | LB |
+|---|---|---|---|
+| exp_001 | dense @512 | 46 epochs | 0.26 |
+| exp_004 | dense @1024 | 300 epochs, converged | 0.28 |
+| exp_002 | YOLO instance @1280 | 149 epochs, still improving | **0.32** |
+
+Doubling the resolution and training the dense line all the way to convergence
+bought **+0.02**. An instance model that was cut off mid-climb still beats it by
+0.04. Whatever caps the dense approach is not epochs and not resolution, because
+both were removed and the score barely moved.
+
+This also corrects the diagnosis recorded above. Mask precision was identified as
+the binding constraint, and resolution and capacity as the levers. Resolution was
+then doubled with almost no effect. The honest reading is that predicting
+instances directly captures something the dense pipeline cannot recover
+afterwards, whatever the pixel quality — and that connected components reaching
+PQ 1.000 on *ground-truth* masks was never evidence they would do so on predicted
+ones.
+
+exp_004 also over-predicts: 9.50 instances per image against about 7.4 in the
+ground truth. Under PQ each false positive costs half a unit, which is part of
+why converging did not pay.
+
+## Where this leaves the effort
+
+Best remains **exp_002 at 0.32**, rank about 227 of 467. The single untested
+idea with evidence behind it is the one that was never allowed to finish:
+exp_003, a 2048 fine-tune of exp_002's weights, which keeps the architecture
+that demonstrably wins and adds the resolution that the dense line could not
+exploit but an instance model may. It needs roughly 6 h of GPU. 4.6 h remain,
+and GPU is reserved for other work.

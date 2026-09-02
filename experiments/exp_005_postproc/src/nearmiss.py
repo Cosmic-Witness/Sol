@@ -176,8 +176,12 @@ def main() -> None:
 
     results = []
     print(f"{'conf':>6}{'min_area':>10}{'grow':>6}{'PQ':>9}{'SQ':>8}{'RQ':>8}{'TP':>7}{'FP':>7}{'FN':>7}")
-    for conf in (0.25, 0.30, 0.35):
-        for grow in (-1, 0, 1, 2, 3):
+    # The first grid put the optimum at conf 0.35 / grow -1, both on its
+    # boundary, which means the true optimum lies outside it. Dilation was
+    # monotonically catastrophic (PQ 0.19 at +3), so the grid extends into
+    # erosion and higher confidence only.
+    for conf in (0.30, 0.35, 0.40, 0.45, 0.50):
+        for grow in (-4, -3, -2, -1, 0):
             record = evaluate(conf, 300, grow)
             record.update(conf=conf, min_area=300, grow=grow)
             results.append(record)

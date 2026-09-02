@@ -8,6 +8,7 @@ cheapest true positives are.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -56,6 +57,20 @@ def main() -> None:
          "--images", root / "train" / "train_images",
          "--imgsz", 2048,
          "--out", OUT_DIR / "nearmiss.json"])
+
+    # Apply the winning setting to the test set in the same kernel: the sweep has
+    # already paid for loading the model, and a separate run would repeat it.
+    best = json.loads((OUT_DIR / "nearmiss.json").read_text())["best"]
+    print(f"\napplying conf={best['conf']} grow={best['grow']} "
+          f"(validation PQ {best['pq']:.4f})", flush=True)
+    run([sys.executable, "-m", "experiments.exp_002_yolo_seg.src.predict",
+         "--weights", weights[0],
+         "--images", root / "test" / "test_images",
+         "--output", OUT_DIR / "submission.csv",
+         "--imgsz", 2048,
+         "--conf", best["conf"],
+         "--min-area", best["min_area"],
+         "--grow", best["grow"]])
     print("\nDONE.", flush=True)
 
 

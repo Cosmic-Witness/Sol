@@ -46,6 +46,7 @@ def masks_for_image(
     max_det: int,
     min_area: int,
     tta: bool,
+    grow: int = 0,
 ) -> list[tuple[float, np.ndarray]]:
     """Predict one image; return (confidence, full-resolution mask) pairs."""
     result = model.predict(
@@ -76,6 +77,9 @@ def masks_for_image(
             # quantised twice.
             mask = cv2.resize(mask, (FULL_SIZE, FULL_SIZE), interpolation=cv2.INTER_LINEAR)
         binary = (mask > 0.5).astype(np.uint8)
+        if grow:
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * abs(grow) + 1,) * 2)
+            binary = (cv2.dilate if grow > 0 else cv2.erode)(binary, kernel).astype(np.uint8)
         if int(binary.sum()) < min_area:
             continue
         candidates.append((float(scores[index]), binary))
@@ -91,6 +95,7 @@ def predict_directory(
     max_det: int,
     min_area: int,
     tta: bool,
+    grow: int = 0,
 ) -> dict[str, list[np.ndarray]]:
     predictions: dict[str, list[np.ndarray]] = {}
     paths = sorted(images_dir.glob("*.jpeg"))
@@ -98,7 +103,7 @@ def predict_directory(
         raise SystemExit(f"no .jpeg images under {images_dir}")
 
     for position, path in enumerate(paths, start=1):
-        candidates = masks_for_image(model, path, imgsz, conf, iou, max_det, min_area, tta)
+        candidates = masks_for_image(model, path, imgsz, conf, iou, max_det, min_area, tta, grow)
         # paint_panoptic returns (score, mask, area); write_submission wants the
         # masks alone, still in the order painting settled on.
         painted = paint_panoptic(candidates, min_area=min_area) if candidates else []
@@ -119,6 +124,12 @@ def main() -> None:
     parser.add_argument("--iou", type=float, default=0.60)
     parser.add_argument("--max-det", type=int, default=100)
     parser.add_argument("--min-area", type=int, default=150)
+    parser.add_argument("--grow", type=int, default=0,
+                        help="morphological growth in px; negative erodes. "
+                             "Validation puts the optimum at -1: YOLO's mask "
+                             "prototypes are systematically slightly too large, "
+                             "so eroding both tightens IoU on matches and culls "
+                             "marginal detections below min_area.")
     parser.add_argument("--tta", action="store_true")
     args = parser.parse_args()
 
@@ -134,6 +145,7 @@ def main() -> None:
         args.max_det,
         args.min_area,
         args.tta,
+        args.grow,
     )
 
     empty = [stem for stem, masks in predictions.items() if not masks]

@@ -775,3 +775,30 @@ version.
 The knob works. Whether it is the right knob is now doubtful for a different
 reason: the rasterisation offset lives in the targets, and finer supervision
 against a fat target reproduces the fat target more faithfully.
+
+## Resolution is maxed out at native (negative result)
+
+Inference resolution was the first real gain of the project, 1280 to 2048 taking
+validation PQ 0.3736 to 0.4064. The obvious question is whether it keeps going.
+It does not — upsampling past the native frame degrades:
+
+| imgsz | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|
+| **2048** | **0.4064** | 0.6695 | 0.6070 | 854 | 635 | 471 |
+| 2560 | 0.3993 | 0.6727 | 0.5936 | 772 | 504 | 553 |
+| 3072 | 0.3624 | 0.6728 | 0.5387 | 728 | 650 | 597 |
+
+The mechanism is visible in the split. Segmentation quality is flat across all
+three, 0.6695 to 0.6728 — the masks that *are* found are no better at 3072 than
+at 2048, which is what upsampling should do, since it adds no information the
+sensor did not record. Recognition falls sharply, 0.607 to 0.539, and false
+negatives rise 471 to 597.
+
+So beyond native the model simply finds fewer filaments: objects are inflated
+past the scales the detector learned, and the anchor-free head has a limited
+range of object sizes it responds to. The earlier gain from 1280 to 2048 was
+recovering structures that downsampling had destroyed; there is nothing left to
+recover once every recorded pixel is present.
+
+**2048 is the operating point.** Resolution is finished as a source of gains
+without retraining at a different scale.

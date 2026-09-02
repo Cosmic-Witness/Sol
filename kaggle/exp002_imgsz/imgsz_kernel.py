@@ -91,7 +91,7 @@ def main() -> None:
 
     winner = max(summary.items(), key=lambda kv: kv[1]["pq"])
     imgsz, best = winner
-    baseline = summary[1280]["pq"]
+    baseline = summary[min(summary)]["pq"]
     print(f"\nbest: imgsz {imgsz} at PQ {best['pq']:.4f} "
           f"({best['pq'] - baseline:+.4f} against 1280)", flush=True)
     (OUT_DIR / "resolution_summary.json").write_text(json.dumps(summary, indent=2))

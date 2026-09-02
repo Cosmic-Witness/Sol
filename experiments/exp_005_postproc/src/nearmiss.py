@@ -109,6 +109,9 @@ def main() -> None:
     parser.add_argument("--imgsz", type=int, default=2048)
     parser.add_argument("--floor-conf", type=float, default=0.05)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--dump-cache", default=None,
+                        help="write the candidate cache here so a calibration "
+                             "pass can reuse it instead of re-running inference")
     args = parser.parse_args()
 
     with open(args.annotations, encoding="utf-8") as fh:
@@ -159,6 +162,18 @@ def main() -> None:
     total = sum(len(v) for v in cache.values())
     print(f"cached {total} candidates\n", flush=True)
 
+    if args.dump_cache:
+        # RLE counts are bytes; JSON needs text. The mask is reconstructed
+        # exactly from these, so calibration never re-runs the model.
+        serialisable = {
+            stem: [{"size": list(e["rle"]["size"]),
+                    "counts": e["rle"]["counts"].decode("ascii"),
+                    "features": e["features"]} for e in entries]
+            for stem, entries in cache.items()
+        }
+        Path(args.dump_cache).write_text(json.dumps(serialisable))
+        print(f"wrote candidate cache to {args.dump_cache}", flush=True)
+
     def evaluate(conf: float, min_area: int, grow: int) -> dict:
         rows = []
         for _iid, stem, annotations in records:
@@ -180,8 +195,11 @@ def main() -> None:
     # boundary, which means the true optimum lies outside it. Dilation was
     # monotonically catastrophic (PQ 0.19 at +3), so the grid extends into
     # erosion and higher confidence only.
-    for conf in (0.30, 0.35, 0.40, 0.45, 0.50):
-        for grow in (-4, -3, -2, -1, 0):
+    # The optimum is confirmed interior at conf 0.35 / grow -1 across a grid
+    # spanning conf 0.30-0.50 and grow -4 to +3. Only its neighbourhood is
+    # re-derived here; the rest of the run belongs to calibration.
+    for conf in (0.30, 0.35, 0.40):
+        for grow in (-2, -1, 0):
             record = evaluate(conf, 300, grow)
             record.update(conf=conf, min_area=300, grow=grow)
             results.append(record)

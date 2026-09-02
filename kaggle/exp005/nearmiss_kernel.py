@@ -56,7 +56,16 @@ def main() -> None:
          "--annotations", root / "train" / ANNOTATION_NAME,
          "--images", root / "train" / "train_images",
          "--imgsz", 2048,
-         "--out", OUT_DIR / "nearmiss.json"])
+         "--out", OUT_DIR / "nearmiss.json",
+         "--dump-cache", SCRATCH / "candidates.json"])
+
+    # Calibration reuses the cached candidates; it never re-runs the model.
+    run([sys.executable, "-m", "pip", "install", "-q", "scikit-learn"])
+    run([sys.executable, "-m", "experiments.exp_005_postproc.src.calibrate",
+         "--cache", SCRATCH / "candidates.json",
+         "--annotations", root / "train" / ANNOTATION_NAME,
+         "--out", OUT_DIR / "calibrate.json",
+         "--grow", -1, "--min-area", 300])
 
     # Apply the winning setting to the test set in the same kernel: the sweep has
     # already paid for loading the model, and a separate run would repeat it.

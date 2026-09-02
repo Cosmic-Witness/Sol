@@ -521,3 +521,51 @@ validation figure of 0.4064 reflects. But it does mean the remaining headroom
 below 0.55 is smaller than the raw gap suggests, and that gains from fitting
 mask boundaries more tightly are competing with an ambiguity the labels
 themselves do not resolve.
+
+## The validation split leaks through time, and it is large
+
+The canonical split groups by photograph, so no observation appears in both
+folds and the annotator-duplicate leak is closed. An earlier note in this
+document claimed the temporal leak was "bounded at 10%". That measured the wrong
+thing — observations sharing a *calendar day* — and is withdrawn.
+
+A filament survives on the disk for days to weeks, and GONG images the Sun
+continuously from six stations. Two observations a day apart usually contain the
+same physical filaments under different seeing. Measured against temporal
+proximity rather than date equality:
+
+| buffer | validation observations with a training observation inside it |
+|---|---|
+| ±0 days | 10.4% |
+| ±1 day | **43.4%** |
+| ±2 days | 64.2% |
+| ±3 days | 79.2% |
+| ±7 days | 94.3% |
+
+**43% of validation observations have a training observation within one day.**
+Validation has been scoring the model partly on filaments it trained on, which
+is a direct explanation for why roughly a third of validation gains reach the
+leaderboard.
+
+A per-observation buffer cannot fix it: only 6 of 106 validation observations sit
+more than a week from any training observation, so enforcing a gap by exclusion
+would leave nothing to validate against. `make_temporal_split` instead holds out
+five contiguous blocks spread across the 2011-2022 archive — several rather than
+one, because a single block would tie the fold to one part of the solar cycle,
+over which activity varies enormously — and discards observations within the
+buffer of a block boundary rather than assigning them.
+
+| split | train | val | val within 1d of train | within 7d |
+|---|---|---|---|---|
+| grouped (current) | 601 obs / 974 rec | 106 obs / 180 rec | 43.4% | 94.3% |
+| temporal, 7-day buffer | 578 obs / 940 rec | 105 obs / 173 rec | **0.0%** | **0.0%** |
+
+The leak closes completely for 23 training observations and one validation
+observation. That is a very cheap fix for a defect that has been inflating every
+validation number in this document.
+
+**What this does and does not invalidate.** Comparisons made *within* the
+grouped split — erosion against no erosion, 2048 against 1280 — are still valid
+rankings, because both arms saw the same leak. The absolute values are
+optimistic, and the leaderboard has been the honest check throughout. The next
+training run should use the temporal split so its numbers mean what they say.

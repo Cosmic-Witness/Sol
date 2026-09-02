@@ -569,3 +569,69 @@ grouped split — erosion against no erosion, 2048 against 1280 — are still va
 rankings, because both arms saw the same leak. The absolute values are
 optimistic, and the leaderboard has been the honest check throughout. The next
 training run should use the temporal split so its numbers mean what they say.
+
+## exp_005 — mask erosion: 0.33 to 0.36, rank 206 to 85
+
+The largest gain of the project, from post-processing alone. No retraining, no
+GPU, no new detections.
+
+| | validation PQ | public | rank |
+|---|---|---|---|
+| exp_002 @1280 | 0.3736 | 0.32 | ~240/486 |
+| @2048 inference | 0.4064 | 0.33 | ~206/486 |
+| **@2048 + 1px erosion, conf 0.35** | **0.4404** | **0.36** | **~85/486 (top 17.5%)** |
+
+### The hypothesis was backwards
+
+The experiment was built to test whether masks should be **grown**. Ultralytics
+thresholds mask prototypes at 0.5, and for a structure a few pixels wide the
+prototype field is smooth enough that the tails of a thin ridge fall below the
+threshold first — so thin barbs should be systematically eroded, and dilation
+should recover them.
+
+The measurement says the opposite, monotonically. Across conf 0.30-0.50 and
+growth -4 to +3, every dilation loses and every erosion up to -1 wins:
+
+| grow | PQ (conf 0.35) | SQ | TP | FP |
+|---|---|---|---|---|
+| -4 | 0.1156 | 0.5953 | 200 | 535 |
+| -2 | 0.3702 | 0.6507 | 708 | 456 |
+| **-1** | **0.4404** | **0.6843** | 845 | 456 |
+| 0 | 0.4169 | 0.6708 | 829 | 514 |
+| +3 | 0.2016 | 0.6024 | 448 | 905 |
+
+The optimum is interior in both dimensions — confidence peaks at 0.35 with 0.30
+and 0.40 both lower, growth peaks at -1 with -2 and 0 both lower — so it is a
+real optimum and not a grid boundary.
+
+### Why erosion wins
+
+Two effects compound, and the counts separate them.
+
+**Masks are systematically too large.** SQ rises 0.6708 to 0.6843 under erosion:
+the masks that already matched now overlap their ground truth *better*. YOLO
+traces filaments slightly fat, so trimming a pixel tightens every match.
+
+**Marginal detections are culled rather than charged.** FP falls 514 to 456 while
+TP falls only 829 to 845 — it rises, in fact. Eroding shrinks borderline blobs
+below the 300px minimum area, so they are dropped before scoring instead of
+costing half a unit of denominator each.
+
+The near-miss framing that motivated this was right about *where* the score
+leaks and wrong about the direction of the fix. Over-large masks were both
+diluting real matches and manufacturing false positives.
+
+### The exchange rate is not a constant
+
+| change | validation | public | transfer |
+|---|---|---|---|
+| resolution 1280 to 2048 | +0.033 | +0.010 | 30% |
+| 1px erosion | +0.034 | +0.030 | 88% |
+
+Two changes of near-identical validation size transferred at 30% and 88%. The
+"roughly a third reaches the leaderboard" rule recorded earlier does not hold and
+should not be used to forecast. A plausible reading is that resolution gains
+concentrate on faint, ambiguous structures — precisely where annotators disagree
+and the leak between temporally adjacent observations helps most — while erosion
+is a systematic geometric correction that applies identically to every image and
+therefore survives the distribution shift intact.

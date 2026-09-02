@@ -710,3 +710,68 @@ supervision resolution.
 The cheaper fix is to rasterise the training targets to match the scorer's
 convention, which is a change to target generation rather than to the loss, and
 costs nothing to try on free quota.
+
+## The rasterisation offset is shape-dependent, and post-hoc correction is quantised
+
+Two follow-ups sharpen the finding above.
+
+**The offset is not a constant.** Over 498 instances, the target/scorer area
+ratio correlates with perimeter-to-area at **r = +0.926**:
+
+| instance size | area ratio | perimeter/area |
+|---|---|---|
+| Q1, 132-670 px | 1.155 | 0.290 |
+| Q2, 670-1237 px | 1.121 | 0.230 |
+| Q3, 1237-2512 px | 1.101 | 0.195 |
+| Q4, 2512-27957 px | 1.074 | 0.142 |
+
+Thin filaments are 15% too fat, chunky ones 7%. That is what a boundary effect
+must do — the disagreement lives on the perimeter, so its cost as a *fraction of
+area* scales with perimeter per unit area. The earlier reasoning that "a uniform
+bias implies a constant cause" had the right suspect but the wrong premise: the
+bias is systematic, not uniform.
+
+This partly rescues the global 1px erosion. A fixed-pixel erosion also removes
+area in proportion to perimeter, so it is already scaled the right way; it is the
+magnitude that overshoots, not the shape dependence.
+
+**Post-hoc correction cannot go below one pixel.** Attempting a sub-pixel trim by
+thresholding the distance transform does nothing: on a binary mask the transform
+is quantised, and `dt > 0.25`, `> 0.5` and `> 0.75` all return the original mask
+because boundary pixels sit at distance exactly 1.0.
+
+| trim | IoU vs scorer | area ratio |
+|---|---|---|
+| none | 0.8926 | 1.1187 |
+| 0.25 / 0.5 / 0.75 px | 0.8926 | 1.1187 |
+| 1.0 px | 0.8872 | 0.8948 |
+
+So one pixel is the finest available correction after the fact, and it moves the
+area from 12% too large to 11% too small. The convention offset wants about half
+a pixel and there is no way to spend half a pixel on a raster.
+
+**Which points the fix at target generation rather than at inference.** Shrinking
+the polygon *coordinates* before Ultralytics rasterises them has no quantisation
+floor — an inward offset of a fraction of a pixel is well defined in coordinate
+space. That is a change to `prepare_yolo.py`, costs nothing, and is the correct
+form of the fix.
+
+## Status of the `mask_ratio` hypothesis
+
+Checked directly in Ultralytics 8.4.137, `v8SegmentationLoss`:
+
+```python
+if tuple(masks.shape[-2:]) != (mask_h, mask_w):  # downsample
+    # masks = F.interpolate(masks[None], (mask_h, mask_w), mode="nearest")[0]
+    proto = F.interpolate(proto, masks.shape[-2:], mode="bilinear", align_corners=False)
+```
+
+The commented-out line is the old behaviour — targets downsampled to the
+prototype grid, which would have made `mask_ratio` inert for the loss. It is dead
+code. The live line upsamples the **prototypes** to the target resolution
+instead, so `mask_ratio=1` genuinely supervises at full resolution in this
+version.
+
+The knob works. Whether it is the right knob is now doubtful for a different
+reason: the rasterisation offset lives in the targets, and finer supervision
+against a fat target reproduces the fat target more faithfully.

@@ -880,3 +880,56 @@ returned: tracing half a pixel too wide is better than not tracing at all.
 learns targets in the convention the leaderboard actually measures. This is free,
 needs no library patch, and is the change that supersedes the paid `mask_ratio`
 experiment.
+
+## The erosion gain is 95% boundary correction
+
+The erosion sweep always ran with a 300px minimum-area filter, so two mechanisms
+were tangled in its result: a boundary correction, and the filter quietly
+discarding blobs that erosion shrank below the threshold. Re-running with the
+filter disabled separates them.
+
+| | grow 0 | grow -1 | gain |
+|---|---|---|---|
+| with 300px filter | 0.4169 | 0.4404 | **+0.0235** |
+| without filter | 0.4153 | 0.4375 | **+0.0223** |
+
+**The boundary effect accounts for 95% of the gain.** The area filter supplies
+about 5%.
+
+The decisive number is SQ, which is the mean IoU over *matched* pairs and
+therefore cannot be moved by discarding unmatched predictions. With the filter
+off it rises **0.6707 to 0.6837**. Masks that already matched now fit their
+ground truth better, which is a boundary correction and nothing else.
+
+With the filter off, erosion improves every count at once:
+
+| | TP | FP | FN |
+|---|---|---|---|
+| grow 0 | 833 | 533 | 492 |
+| grow -1 | **861** | **505** | **464** |
+
+More true positives, fewer false positives, fewer false negatives. That is what
+a genuine boundary improvement looks like: near-misses cross the IoU 0.5
+threshold, converting an FP and an FN into a TP simultaneously.
+
+## The chain, closed
+
+1. Ultralytics rasterises training targets with `cv2.fillPoly`; the scorer uses
+   `pycocotools`. The targets are **11% larger in area**, IoU 0.898.
+2. The model learns to reproduce those targets, so its predictions are fat in the
+   same convention.
+3. Eroding predictions by one pixel corrects the boundary, and that correction is
+   **95% of the +0.03 leaderboard gain** — not an artefact of the area filter.
+4. One pixel is the finest post-hoc correction available and it overshoots; the
+   offset wants half a pixel.
+5. A **0.5px inward polygon offset** at target generation reconciles the
+   conventions properly — IoU 0.898 to 0.959, area ratio 1.111 to 0.986 — with no
+   quantisation floor and no library patch.
+
+Step 5 supersedes step 3: the trained fix is per-pixel and exact, where the
+post-hoc trim is global and blunt. It is free, and it belongs in the next
+training run rather than in a paid experiment.
+
+The paid `mask_ratio=1` experiment is withdrawn. Finer loss supervision against a
+target that is 11% too fat reproduces the fat target more faithfully; the defect
+was never in the supervision resolution.

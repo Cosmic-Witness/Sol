@@ -467,3 +467,57 @@ pinned by its own test so the assumption stays visible.
 **Consequence:** every threshold, resolution and post-processing decision taken
 on validation has been measuring the leaderboard's quantity, not an approximation
 of it.
+
+## Consensus fusion does not produce a better target (negative result)
+
+The human-ceiling measurement suggested the response was better labels rather
+than better masks: fuse the 296 multiply-annotated observations into consensus
+instances and train on the agreement. `shared/consensus.py` implements it —
+instances linked across annotators at a permissive IoU 0.25 (0.5 would split
+genuine agreements, since annotators only reach SQ 0.63 against each other),
+then reduced by pixel-wise majority vote, then painted disjoint.
+
+Scored naively it looks decisive:
+
+| | PQ | SQ | RQ |
+|---|---|---|---|
+| annotator vs annotator | 0.3361 | 0.6348 | 0.5296 |
+| annotator vs consensus | 0.6558 | 0.8061 | 0.8134 |
+
+That comparison is circular. The consensus is built from those same annotators,
+so of course they agree with it. The honest test is leave-one-out, available on
+the 151 three-annotator observations: build the consensus from two annotators and
+score it against the third, who contributed nothing to it.
+
+| | PQ | SQ | RQ |
+|---|---|---|---|
+| held-out vs a single other annotator | 0.3287 | 0.6329 | 0.5193 |
+| held-out vs consensus of the other two | 0.3291 | 0.6350 | 0.5183 |
+| **delta** | **+0.0004** | +0.0021 | -0.0010 |
+
+**Two annotators averaged predict a third no better than one annotator does.**
+
+This is a stronger statement than "consensus training will not help", though it
+is that too. It says the disagreement between annotators is not random error
+around a true segmentation, which averaging would reduce. It is structured
+ambiguity about what a filament *is* — where a faint extension stops being part
+of the spine, whether two nearby patches are one object or two. Averaging two
+opinions does not move you closer to a third, because there is no single answer
+they are all noisy measurements of.
+
+## What that implies about the score
+
+| | PQ |
+|---|---|
+| inter-annotator agreement | 0.3371 |
+| **this model's public leaderboard score** | **0.33** |
+| this model's validation, against one annotator | 0.4064 |
+
+The model agrees with whichever annotator labelled the test set about as well as
+two human experts agree with each other. That is not proof of a ceiling — the
+leaderboard's top cluster sits at 0.55, and a model can exceed pairwise human
+agreement by learning the central tendency of many annotators, which is what the
+validation figure of 0.4064 reflects. But it does mean the remaining headroom
+below 0.55 is smaller than the raw gap suggests, and that gains from fitting
+mask boundaries more tightly are competing with an ambiguity the labels
+themselves do not resolve.

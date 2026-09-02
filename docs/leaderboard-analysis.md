@@ -802,3 +802,34 @@ recover once every recorded pixel is present.
 
 **2048 is the operating point.** Resolution is finished as a source of gains
 without retraining at a different scale.
+
+## Calibrated emission loses to raw confidence (negative result)
+
+The emission rule says a candidate is worth predicting when
+P(match) * E[IoU] > 0.5 * PQ, about P > 0.32 at the current operating point, and
+that detector confidence is not P(match) because it scores the box rather than
+whether the mask will clear IoU 0.5. A gradient-boosted model was fitted on mask
+area, elongation, distance from the limb and solidity to estimate P(match)
+directly, evaluated out-of-fold by GroupKFold over photographs so no candidate
+was scored by a model that had seen its photograph.
+
+3686 candidates, 37.7% of which match at IoU > 0.5.
+
+| gate | threshold | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|---|
+| probability | 0.32 | 0.4040 | 0.6783 | 0.5956 | 866 | 717 | 459 |
+| probability | 0.45 | 0.4266 | 0.6812 | 0.6263 | 796 | 421 | 529 |
+| **confidence** | **0.35** | **0.4432** | 0.6828 | 0.6491 | 850 | 444 | 475 |
+
+**Raw confidence wins by 0.017 PQ.** The theory about where to threshold was
+sound — the probability gate does peak near where the arithmetic says it should —
+but the estimator is worse than the baseline it was built to beat. The
+geometric features add nothing beyond what confidence already encodes, and the
+out-of-fold predictions are noisier than the raw score.
+
+Worth noting what the honest evaluation cost: scored on candidates rather than
+grouped by photograph, this would have looked like a win. The consensus
+experiment taught that lesson at +0.32 apparent versus +0.0004 real; the same
+control applied here turns an apparent improvement into a measured regression.
+
+Detector confidence stays the gate.

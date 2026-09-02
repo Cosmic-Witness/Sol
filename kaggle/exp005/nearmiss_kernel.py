@@ -57,12 +57,12 @@ def main() -> None:
          "--images", root / "train" / "train_images",
          "--imgsz", 2048,
          "--out", OUT_DIR / "nearmiss.json",
-         "--dump-cache", SCRATCH / "candidates.json"])
+         "--dump-cache", OUT_DIR / "candidates.json"])
 
     # Calibration reuses the cached candidates; it never re-runs the model.
     run([sys.executable, "-m", "pip", "install", "-q", "scikit-learn"])
     run([sys.executable, "-m", "experiments.exp_005_postproc.src.calibrate",
-         "--cache", SCRATCH / "candidates.json",
+         "--cache", OUT_DIR / "candidates.json",
          "--annotations", root / "train" / ANNOTATION_NAME,
          "--out", OUT_DIR / "calibrate.json",
          "--grow", -1, "--min-area", 300])

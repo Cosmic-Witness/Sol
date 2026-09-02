@@ -33,7 +33,12 @@ REPO_DIR = SCRATCH / "Sol"
 OUT_DIR = WORKING / "outputs"
 
 ANNOTATION_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
-RESOLUTIONS = (1280, 1600, 2048)
+# 1280 -> 1600 -> 2048 gained +0.023 then +0.010: still climbing at the native
+# frame, so the ceiling has not been found. 2560 and 3072 upsample past native,
+# which adds no information but does enlarge thin structures relative to the
+# detector's stride — the whole reason resolution helped in the first place.
+# 2048 is repeated as the control.
+RESOLUTIONS = (2048, 2560, 3072)
 
 
 def run(command: list, cwd: Path | None = None) -> None:

@@ -390,3 +390,46 @@ exp_003 retrains at 2048 rather than merely inferring there, which removes the
 train/inference mismatch instead of paying it. The evidence for it is now
 measured rather than argued: resolution is worth real PQ on this model, and the
 gain arrives specifically as recovered recall.
+
+## The human ceiling: inter-annotator PQ is 0.3371
+
+296 observations in this file carry two or three independent annotations (411
+once, 145 twice, 151 three times). Scoring every annotator against every other
+on the same photograph, 598 pairs, at the same 1024 raster and 150px minimum
+area the model is held to:
+
+| | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|
+| annotator vs annotator | **0.3371** | 0.6341 | 0.5317 | 2122 | 1873 | 1865 |
+| exp_002 @2048, validation | **0.4064** | 0.6695 | 0.6070 | 854 | 635 | 471 |
+
+The model scores above inter-annotator agreement on all three quantities.
+
+This is not a claim that the model beats experts. A model trained across many
+annotators learns their average, and an average sits closer to any individual
+than two individuals sit to each other; regression to the mean produces exactly
+this. But it bounds what is left to win.
+
+**It reframes the near-miss population.** The obvious reading of 635 false
+positives against SQ 0.67 is that masks are poor and a third of those
+predictions are real filaments segmented just under the IoU 0.5 threshold.
+Human annotators produce 1873 false positives against each other at SQ 0.634 on
+the same data. A large share of the near-miss population is two people
+disagreeing about where a filament ends and whether a faint patch is one
+filament or two — not model error, and not recoverable by better masks.
+
+**It changes what the remaining work should target.** Pushing SQ past 0.67
+means fitting the noise between annotators more tightly than annotators fit each
+other. The principled response is not a better mask loss but better targets:
+fuse the 296 multiply-annotated observations into consensus masks and train on
+those. That raises the ceiling instead of chasing it.
+
+It also partly explains the widening validation-to-public gap. Validation is
+scored against one annotator's opinion per record; so is the leaderboard. Some of
+the difference between 0.4064 and 0.33 is which annotator happened to label the
+test set.
+
+**Caveat on the ceiling.** Inter-annotator PQ is not a hard cap on leaderboard
+score. The test set is labelled once, and a model trained on consensus can beat
+any individual annotator against another individual. The number bounds how much
+of the residual is signal, not how high a score can go.

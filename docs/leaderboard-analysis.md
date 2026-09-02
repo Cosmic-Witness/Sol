@@ -833,3 +833,50 @@ experiment taught that lesson at +0.32 apparent versus +0.0004 real; the same
 control applied here turns an apparent improvement into a measured regression.
 
 Detector confidence stays the gate.
+
+## The fix: a half-pixel inward polygon offset at target generation
+
+The rasterisation mismatch is correctable, and in coordinate space rather than on
+the raster. Measured over 250 instances
+(`experiments/exp_006_diagnostics/src/polygon_offset.py`), shrinking each polygon
+before Ultralytics rasterises it:
+
+| inward offset (px) | mean IoU vs scorer | area ratio |
+|---|---|---|
+| 0.00 (current) | 0.8979 | 1.1115 |
+| 0.25 | 0.9455 | 1.0388 |
+| 0.35 | 0.9546 | 1.0185 |
+| **0.50** | **0.9592** | **0.9864** |
+| 0.65 | 0.9451 | 0.9542 |
+| 1.00 | 0.8757 | 0.8758 |
+
+**Half a pixel takes agreement from IoU 0.898 to 0.959 and the area ratio from
+1.111 to 0.986.** That is the offset the 1px erosion overshoot implied, arrived at
+independently.
+
+The correction has to be in coordinate space. On a raster the finest available
+operation is one whole pixel — the distance transform is quantised, so no
+sub-pixel erosion exists — and one pixel overshoots. A polygon buffer has no such
+floor.
+
+Shapely's buffer is used rather than scaling toward the centroid, because a
+buffer moves every edge by the same perpendicular distance, which is what a
+rasterisation boundary offset is; centroid scaling would move a long curved
+filament's ends far more than its middle.
+
+### Two failure modes the naive version has
+
+An unguarded buffer **split 42 of 8199 instances** at their narrow waists. Under
+PQ that is charged three times — both fragments as false positives, the filament
+as a false negative — and it would train the model toward exactly the
+over-fragmentation this pipeline is built to avoid. Only the largest surviving
+piece is kept, and the instance count comes back to 6874 train and 1325
+validation, matching the original file exactly.
+
+A buffer can also erase a thin filament entirely. There the original polygon is
+returned: tracing half a pixel too wide is better than not tracing at all.
+
+`prepare_yolo.py` now applies the offset by default, so the next training run
+learns targets in the convention the leaderboard actually measures. This is free,
+needs no library patch, and is the change that supersedes the paid `mask_ratio`
+experiment.

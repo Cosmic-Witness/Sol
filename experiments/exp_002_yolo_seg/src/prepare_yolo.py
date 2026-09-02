@@ -44,6 +44,19 @@ import numpy as np
 
 from shared.data_split import assert_disjoint, make_split
 
+# Ultralytics rasterises labels with cv2.fillPoly; the competition scorer uses
+# pycocotools. On this dataset the two disagree at IoU 0.90, with the Ultralytics
+# raster 11% larger in area — filaments are nearly all perimeter, so a one-pixel
+# convention difference is a large fraction of the object. Training against the
+# fatter convention teaches the model to over-trace every filament.
+#
+# Shrinking the polygon by half a pixel before it is written reconciles them:
+# IoU 0.8979 -> 0.9592 and area ratio 1.1115 -> 0.9864, measured over 250
+# instances by experiments/exp_006_diagnostics/src/polygon_offset.py. The
+# correction has to happen in coordinate space, because on a raster the finest
+# available operation is a full pixel and that overshoots.
+DEFAULT_POLYGON_OFFSET = 0.5
+
 
 def merge_multi_segment(segments: list[list[float]]) -> np.ndarray:
     """Stitch several polygons into one closed path.
@@ -78,6 +91,53 @@ def merge_multi_segment(segments: list[list[float]]) -> np.ndarray:
     return merged
 
 
+def shrink(polygon: np.ndarray, offset: float) -> list[np.ndarray]:
+    """Offset a polygon inward by `offset` pixels, in coordinate space.
+
+    Shapely's buffer moves every edge by the same perpendicular distance, which
+    is what a rasterisation boundary offset is. Scaling toward the centroid would
+    not do: a filament is long and curved, so that would move its ends far more
+    than its middle.
+
+    A buffer can split a thin shape at a narrow waist, or erase it entirely.
+    Both are failure modes worse than the fatness being corrected:
+
+    - **Splitting** turns one filament into two instances. Under Panoptic Quality
+      that is charged three times — both fragments as false positives and the
+      filament as a false negative — and it teaches the model the
+      over-fragmentation this pipeline is otherwise built to avoid. Measured on
+      this dataset, an unguarded 0.5px buffer splits 42 of 8199 instances. Only
+      the largest surviving piece is kept, so the instance count is preserved.
+    - **Erasure** loses the filament outright, so the original polygon is
+      returned instead: tracing half a pixel too wide is better than not tracing.
+    """
+    if offset <= 0 or len(polygon) < 3:
+        return [polygon]
+    try:
+        from shapely.geometry import Polygon
+    except ImportError:
+        return [polygon]
+
+    shape = Polygon(polygon)
+    if not shape.is_valid:
+        shape = shape.buffer(0)          # repairs self-intersecting traces
+    if shape.is_empty:
+        return [polygon]
+
+    shrunk = shape.buffer(-offset)
+    if shrunk.is_empty:
+        return [polygon]
+
+    geoms = [shrunk] if shrunk.geom_type == "Polygon" else list(shrunk.geoms)
+    # One filament in, one filament out. Keeping every fragment would inflate the
+    # instance count and train the model to split filaments at their waists.
+    geoms = [g for g in geoms if g.exterior is not None and len(g.exterior.coords) >= 3]
+    if not geoms:
+        return [polygon]
+    largest = max(geoms, key=lambda g: g.area)
+    return [np.asarray(largest.exterior.coords, dtype=np.float64)]
+
+
 def write_label(path: Path, polygons: list[np.ndarray], width: int, height: int) -> int:
     """Write one YOLO segmentation label file. Returns the instance count."""
     lines = []
@@ -96,7 +156,8 @@ def write_label(path: Path, polygons: list[np.ndarray], width: int, height: int)
     return len(lines)
 
 
-def build(annotations: str, images_dir: str, output_dir: str, val_fraction: float) -> None:
+def build(annotations: str, images_dir: str, output_dir: str, val_fraction: float,
+          polygon_offset: float = DEFAULT_POLYGON_OFFSET) -> None:
     with open(annotations, encoding="utf-8") as fh:
         coco = json.load(fh)
 
@@ -141,7 +202,8 @@ def build(annotations: str, images_dir: str, output_dir: str, val_fraction: floa
             rings = [s for s in segmentation if len(s) >= 6]
             if not rings:
                 continue
-            polygons.append(merge_multi_segment(rings))
+            merged = merge_multi_segment(rings)
+            polygons.extend(shrink(merged, polygon_offset))
 
         if not polygons:
             empty += 1
@@ -183,8 +245,13 @@ def main() -> None:
     parser.add_argument("--images", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--val-fraction", type=float, default=0.15)
+    parser.add_argument("--polygon-offset", type=float, default=DEFAULT_POLYGON_OFFSET,
+                        help="inward offset in px reconciling Ultralytics' cv2 "
+                             "rasterisation with the scorer's pycocotools one; "
+                             "0 disables")
     args = parser.parse_args()
-    build(args.annotations, args.images, args.output, args.val_fraction)
+    build(args.annotations, args.images, args.output, args.val_fraction,
+          args.polygon_offset)
 
 
 if __name__ == "__main__":

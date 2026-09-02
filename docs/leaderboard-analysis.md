@@ -344,3 +344,49 @@ Averaging predictions over flips for an *instance* model is still possible in
 principle, but it requires matching instances across the augmented views before
 merging them, which is a real algorithm rather than a flag, and it is unvalidated
 here.
+
+## Inference resolution: the cheapest real gain in the project
+
+exp_002 was trained at 1280 and had only ever been run at 1280. Sweeping the
+*inference* resolution over the validation fold, with no retraining:
+
+| inference imgsz | val PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|
+| 1280 | 0.3736 | 0.643 | 0.581 | 721 | 437 | 604 |
+| 1600 | 0.3965 | — | — | 796 | 513 | 529 |
+| **2048** | **0.4064** | 0.670 | 0.607 | 854 | 635 | **471** |
+
+**+0.0328 validation PQ, at zero quota cost.** Larger than anything a night of
+GPU and TPU training produced.
+
+The mechanism is the one the recall analysis predicted. False negatives fall
+604 -> 471 and true positives rise 721 -> 854: at 1280 a barb a few pixels wide
+at native scale is sub-pixel and the detector never proposes it. False positives
+rise too (437 -> 635), but under PQ the recovered detections outweigh them.
+
+Worth noting the model was **trained** at 1280. Running a detector 1.6x above its
+training scale normally costs accuracy; here it gains, which says the resolution
+deficit was severe enough to dominate the mismatch penalty.
+
+**Public score: 0.33**, rank ~204/483 — a new best, up from 0.32 at rank ~238.
+
+## The validation-to-public gap is widening
+
+| | val PQ | public | gap |
+|---|---|---|---|
+| exp_002 @1280 | 0.3736 | 0.32 | 0.054 |
+| exp_002 @2048 | 0.4064 | 0.33 | 0.076 |
+
+Validation gained 0.033 and the leaderboard gained 0.010. The tuning was done on
+the validation fold, so some of that is selection pressure on 106 photographs,
+and the two sets are not identically distributed. Treat validation PQ on this
+project as an optimistic and increasingly loose upper bound rather than a
+predictor: a third of a validation gain reaching the leaderboard is the observed
+exchange rate, not a shortfall to be explained away.
+
+## What this implies for exp_003
+
+exp_003 retrains at 2048 rather than merely inferring there, which removes the
+train/inference mismatch instead of paying it. The evidence for it is now
+measured rather than argued: resolution is worth real PQ on this model, and the
+gain arrives specifically as recovered recall.

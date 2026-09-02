@@ -635,3 +635,78 @@ concentrate on faint, ambiguous structures — precisely where annotators disagr
 and the leak between temporally adjacent observations helps most — while erosion
 is a systematic geometric correction that applies identically to every image and
 therefore survives the distribution shift intact.
+
+## The training targets are rasterised fatter than the scorer measures
+
+`experiments/exp_006_diagnostics/src/rasterisation.py`.
+
+Turning a polygon into a binary mask requires a convention about which boundary
+pixels are inside, and the three common libraries disagree. On a compact object
+that is a rounding error. A filament is nearly all perimeter — measured
+perimeter-to-area ratio 0.216 — so the same disagreement is a large fraction of
+its area.
+
+Over 400 sampled instances at 2048:
+
+| pair | mean IoU | median |
+|---|---|---|
+| pycocotools vs cv2 | 0.8744 | 0.8794 |
+| pycocotools vs PIL | 0.9146 | 0.9181 |
+| cv2 vs PIL | 0.8970 | 0.9050 |
+
+| rasteriser | mean area | vs pycocotools |
+|---|---|---|
+| pycocotools | 2250.6 | — |
+| PIL | 2379.0 | +5.71% |
+| cv2 | 2429.6 | **+7.96%** |
+
+**The two sides of this project use different conventions.** Ultralytics
+rasterises training targets with `cv2.fillPoly` (`ultralytics.data.utils.polygon2mask`).
+The organiser's scorer uses `pycocotools`. Measured end to end on the actual
+pipeline:
+
+    IoU(ultralytics target, pycocotools scorer) = 0.9016
+    area ratio                                  = 1.1077
+
+**Training targets are 10.8% larger in area than what the leaderboard measures.**
+The model is faithfully reproducing masks that are fat by construction, and no
+amount of finer loss supervision would fix that, because the offset is in the
+targets rather than in the optimisation.
+
+### But it does not fully explain the erosion gain
+
+The obvious next step is to check whether the 1px erosion that lifted the
+leaderboard is simply this offset being undone. It is not — it overshoots:
+
+| | IoU vs scorer | area ratio |
+|---|---|---|
+| target as rasterised | 0.9016 | 1.1077 |
+| target eroded 1px | 0.8945 | 0.9004 |
+| target eroded 2px | 0.7010 | — |
+
+One pixel of erosion moves the area from 11% too large to 10% too small, and IoU
+against the scorer's rasterisation slightly *falls*. Correcting the convention
+alone would take roughly half a pixel.
+
+So the +0.03 leaderboard gain from eroding predictions is not pure convention
+correction. Two candidate contributions remain, and they are separable:
+
+- the convention offset, worth about half a pixel of the trim, and
+- the minimum-area filter, which discards blobs that erosion shrinks below 300px
+  before they can be scored as false positives.
+
+The second is a confound in the erosion result as originally reported: FP fell
+514 to 456, and some unknown share of that is the area filter rather than the
+boundary. Isolating it requires re-running the sweep with the area filter off.
+
+### What this changes
+
+The planned paid retrain was justified by the hypothesis that coarse loss
+supervision (`mask_ratio=4`) causes the fat masks. That hypothesis now has a
+competitor with direct evidence behind it, and the competitor predicts the
+retrain would not help — the targets carry the offset regardless of the
+supervision resolution.
+
+The cheaper fix is to rasterise the training targets to match the scorer's
+convention, which is a change to target generation rather than to the loss, and
+costs nothing to try on free quota.

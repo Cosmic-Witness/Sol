@@ -1,4 +1,27 @@
-"""Fine-tune exp_002 at 2048 under a wall-clock budget denominated in dollars.
+"""Fine-tune exp_002 at 2048 with full-resolution mask supervision.
+
+What this run tests, and why it is worth money
+----------------------------------------------
+Post-hoc erosion of a single pixel raised the leaderboard from 0.33 to 0.36 —
+the largest gain of the project. That is evidence, not a trick: the model traces
+filaments systematically too fat, and trimming them both tightens IoU on real
+matches and drops borderline blobs below the minimum area.
+
+Ultralytics supervises masks at `mask_ratio=4` by default — quarter resolution,
+upsampled afterwards. On structures a few pixels wide that is precisely the
+mechanism that would produce bloated boundaries, because the loss never sees the
+edge at the scale the edge exists at. `overlap_mask=True` compounds it by
+encoding every instance into one layer with overlaps resolved by index, when
+filaments are disjoint and each deserves its own plane.
+
+So this run fixes at the source what erosion corrects after the fact:
+`mask_ratio=1`, `overlap_mask=False`, at 2048, continuing exp_002's weights.
+
+It carries its own falsification test. If the mechanism is right, the optimal
+post-hoc erosion should move from -1 towards 0 — a better-calibrated model needs
+less trimming. If the optimum stays at -1, the fatness came from somewhere else
+and this hypothesis is wrong regardless of what the score does.
+
 
 Choices here are made for throughput per dollar rather than for the last
 fraction of accuracy, because the budget is small and fixed.
@@ -92,6 +115,14 @@ def train_once(model, data, imgsz, batch, hours, out):
         lr0=0.0005,
         warmup_epochs=1.0,
         val=True,
+        # The point of the run. Default 4 supervises masks at a quarter of the
+        # input resolution; at 2048 that is a 512px target for barbs a few
+        # pixels wide, and the boundary is never seen at the scale it exists at.
+        mask_ratio=1,
+        # Filaments are disjoint by construction, so encoding every instance
+        # into one layer with index-resolved overlaps is the wrong
+        # representation and lets neighbouring boundaries bleed.
+        overlap_mask=False,
         amp=True,
         workers=8,
         cache=False,              # 974 images at 2048 will not fit in pod RAM

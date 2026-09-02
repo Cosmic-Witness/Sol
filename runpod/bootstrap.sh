@@ -73,11 +73,28 @@ say "training finished"
 BEST="$WORK/runs/ft2048/weights/best.pt"
 [ -f "$BEST" ] || BEST="$WORK/runs/ft2048/weights/last.pt"
 
+# Falsification test and operating-point search in one. If full-resolution mask
+# supervision fixed the fat-mask problem, the optimal erosion moves from -1
+# towards 0; if it stays at -1, the hypothesis was wrong whatever the score does.
+python -m experiments.exp_005_postproc.src.nearmiss \
+  --weights "$BEST" \
+  --annotations "$ROOT/train/MAGFiLO_1.0_Annotations_kaggle2026_train.json" \
+  --images "$ROOT/train/train_images" --imgsz 2048 \
+  --out "$WORK/nearmiss_after.json"
+say "erosion sweep on the retrained model complete"
+
+BEST_CONF=$(python -c "import json;print(json.load(open('$WORK/nearmiss_after.json'))['best']['conf'])")
+BEST_GROW=$(python -c "import json;print(json.load(open('$WORK/nearmiss_after.json'))['best']['grow'])")
+BEST_PQ=$(python -c "import json;print(round(json.load(open('$WORK/nearmiss_after.json'))['best']['pq'],4))")
+say "optimum after retraining: conf $BEST_CONF grow $BEST_GROW (val PQ $BEST_PQ)"
+say "  before retraining it was conf 0.35 grow -1 (val PQ 0.4404)"
+
 python -m experiments.exp_002_yolo_seg.src.predict \
   --weights "$BEST" --images "$ROOT/test/test_images" \
-  --output "$WORK/submission.csv" --imgsz 2048 --conf 0.30 --min-area 300
+  --output "$WORK/submission.csv" --imgsz 2048 \
+  --conf "$BEST_CONF" --min-area 300 --grow "$BEST_GROW"
 say "submission written"
 
 kaggle competitions submit -c "$COMP" -f "$WORK/submission.csv" \
-  -m "exp_003: yolo11m-seg fine-tuned @2048 from exp_002, ${TRAIN_HOURS}h on RunPod"
+  -m "exp_006: @2048 mask_ratio=1 overlap_mask=False, conf $BEST_CONF grow $BEST_GROW (val PQ $BEST_PQ)"
 say "SUBMITTED. Pod may be terminated."

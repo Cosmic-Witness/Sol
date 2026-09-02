@@ -433,3 +433,37 @@ test set.
 score. The test set is labelled once, and a model trained on consensus can beat
 any individual annotator against another individual. The number bounds how much
 of the residual is signal, not how high a score can go.
+
+## The metric is confirmed, and our implementation matches it
+
+The competition page is JavaScript-rendered and unreadable to a fetcher, but the
+organiser publishes `azimahmadzadeh/self-evaluation-notebook`, which contains the
+scoring code itself.
+
+**The leaderboard metric is Panoptic Quality at IoU threshold 0.5:**
+
+    PQ = sum(IoU of TP pairs) / (|TP| + 0.5 * |FP| + 0.5 * |FN|)
+
+Multi-scale IoU is **not** the leaderboard metric. It appears among the final
+rubric's diagnostics alongside Dice distributions and one-to-many relations, but
+the leaderboard number is PQ alone. Barb completeness therefore matters exactly
+as much as its effect on IoU, and no more.
+
+`tests/test_pq_matches_official.py` pins our implementation against theirs. The
+two differ in form: the organiser marks **every** GT/prediction pair above the
+threshold as a true positive, while `shared.utils.compute_pq` performs a greedy
+one-to-one match. They are equivalent whenever masks are pixel-disjoint, by a
+counting argument — two disjoint predictions cannot each cover more than half of
+one ground-truth mask — and both sides are disjoint in practice: the scorer
+rejects overlapping submissions, and ground truth is disjoint by construction
+(0 of 107 sampled images contain overlapping GT instances).
+
+Verified across 25 parametrised cases: counts identical, PQ equal to float32
+precision. The one construction where they diverge — two identical predictions
+against one ground truth, which the organiser scores as two true positives and
+we score as one plus a false positive — cannot reach the leaderboard, and is
+pinned by its own test so the assumption stays visible.
+
+**Consequence:** every threshold, resolution and post-processing decision taken
+on validation has been measuring the leaderboard's quantity, not an approximation
+of it.

@@ -137,7 +137,12 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=2e-3)
     parser.add_argument("--width", type=int, default=32)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--time-budget", type=float, default=5.0)
+    parser.add_argument("--patience", type=int, default=25,
+                        help="epochs without validation improvement before stopping. "
+                             "There is deliberately no wall-clock budget: checkpoints "
+                             "are written every epoch to /kaggle/working, which is the "
+                             "kernel output, so an interrupted session keeps its work "
+                             "and a clock would only stop a run that was still learning.")
     args = parser.parse_args()
 
     torch.manual_seed(2026)
@@ -163,6 +168,7 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     best = float("inf")
+    since_improvement = 0
     started = time.time()
 
     for epoch in range(args.epochs):
@@ -214,8 +220,13 @@ def main() -> None:
             torch.save({"state": state, "width": args.width}, out_dir / "best.pt")
             print(f"  new best {best:.4f} (val IoU {val_iou:.4f})", flush=True)
 
-        if elapsed > args.time_budget:
-            print(f"time budget reached at epoch {epoch + 1}", flush=True)
+            since_improvement = 0
+        else:
+            since_improvement += 1
+
+        if since_improvement >= args.patience:
+            print(f"early stop: {args.patience} epochs without improvement "
+                  f"(best {best:.4f} at epoch {epoch + 1 - since_improvement})", flush=True)
             break
 
     print(f"finished. best val loss {best:.4f}", flush=True)

@@ -32,9 +32,8 @@ CROPS_DIR = SCRATCH / "crops"
 CKPT_DIR = WORKING / "checkpoints"
 
 ANNOTATION_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
-EPOCHS = 80
+EPOCHS = 600              # a ceiling, not a target; early stopping decides
 BATCH = 64                # global across 8 cores
-TIME_BUDGET_HOURS = 5.0   # 14.57 h of TPU quota remain; leave margin
 
 
 def run(command: list, cwd: Path | None = None) -> None:
@@ -74,8 +73,7 @@ def main() -> None:
 
     run([sys.executable, "-m", "experiments.exp_008_refiner.src.train_refiner",
          "--data", CROPS_DIR, "--out", CKPT_DIR,
-         "--epochs", EPOCHS, "--batch", BATCH,
-         "--time-budget", TIME_BUDGET_HOURS])
+         "--epochs", EPOCHS, "--batch", BATCH])
     print("\nDONE.", flush=True)
 
 

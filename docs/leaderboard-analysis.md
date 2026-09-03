@@ -1043,3 +1043,32 @@ The honest next step is the one originally proposed and originally dismissed:
 run the detector over the training photographs, match each output to its ground
 truth, and train on those pairs. That is a few hours of CPU in a kernel, and it
 is now clearly justified rather than clearly wasteful.
+
+## Stacking the refiner with erosion is much worse (and the first instinct was right)
+
+Stacking was initially refused on the argument that both corrections address the
+same fat-mask bias. That was then overturned by noting the refiner reaches SQ
+0.6733 against erosion's 0.6843 — apparent under-correction, so a further trim
+might be owed. Measured across four thresholds:
+
+| configuration | PQ | SQ | RQ |
+|---|---|---|---|
+| detector + 1px erosion (shipped) | **0.4404** | 0.6843 | 0.6436 |
+| refiner @0.6 alone | 0.4322 | 0.6733 | 0.6419 |
+| refiner @0.5 + erosion | 0.3787 | 0.6453 | 0.5868 |
+| refiner @0.6 + erosion | 0.3711 | 0.6431 | 0.5770 |
+| refiner @0.8 + erosion | 0.3427 | 0.6340 | 0.5405 |
+
+Eroding a refined mask costs 0.06 PQ. The original instinct was correct and the
+revision was wrong: the refiner does **not** under-correct. It produces masks of
+about the right size whose shape is simply less accurate than the eroded
+originals — lower SQ at comparable extent, not lower SQ from being too fat.
+Reading a single scalar difference as evidence about *direction* was the error.
+
+The threshold optimum is also genuinely interior now, 0.4305 / 0.4322 / 0.4309 /
+0.4267 across 0.5 to 0.8, so the earlier boundary win at 0.6 was not a grid
+artefact.
+
+The refiner loses to a parameterless morphological operation across all eight
+configurations tested. It stays out of the pipeline until it is retrained on real
+detector-versus-truth pairs rather than synthetic damage.

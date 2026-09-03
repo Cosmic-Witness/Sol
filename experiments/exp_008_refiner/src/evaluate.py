@@ -30,7 +30,7 @@ import torch
 
 from experiments.exp_002_yolo_seg.src.predict import masks_for_image
 from experiments.exp_008_refiner.src.apply import refine_instance
-from experiments.exp_008_refiner.src.train_refiner import Refiner
+from experiments.exp_008_refiner.src.model import Refiner
 from shared.data_split import assert_disjoint, make_split
 from shared.utils import aggregate_pq, compute_pq, paint_panoptic
 

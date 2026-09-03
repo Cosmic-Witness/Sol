@@ -28,7 +28,7 @@ import numpy as np
 import torch
 
 from experiments.exp_002_yolo_seg.src.predict import masks_for_image
-from experiments.exp_008_refiner.src.train_refiner import Refiner
+from experiments.exp_008_refiner.src.model import Refiner
 from shared.utils import check_no_overlap, paint_panoptic, write_submission
 
 FULL = 2048

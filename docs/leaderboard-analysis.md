@@ -990,3 +990,56 @@ from any true boundary the model adds mask rather than missing it, which is what
 leakage between instances sharing a smooth 32-prototype basis would look like.
 It is 9.5% of the error, not the main event, but it is the part a refinement
 stage on isolated crops would remove by construction.
+
+## exp_008/009 — the refiner loses to a one-pixel erosion (negative result)
+
+A second-stage U-Net was trained to redraw each instance's boundary on a 256px
+native-resolution crop, given the image and the coarse mask. The motivation was
+sound: 64% of the model's error is within two pixels of the boundary and worth
++0.11 PQ, and a global erosion constant recovers only 0.023 of it.
+
+It trained well. Validation IoU on its own task went from 0.7208 to **0.8529**,
+converged, 138 minutes across 8 TPU cores. Scored against real detector output:
+
+| configuration | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|
+| detector, no erosion | 0.4169 | 0.6708 | 0.6214 | 829 | 514 | 496 |
+| detector + refiner @0.4 | 0.4296 | 0.6727 | 0.6385 | 847 | 481 | 478 |
+| detector + refiner @0.6 | 0.4322 | 0.6733 | 0.6419 | 847 | 467 | 478 |
+| **detector + 1px erosion** | **0.4404** | **0.6843** | 0.6436 | 845 | 456 | 480 |
+
+**It loses by 0.0082 to a morphological operation with no parameters.**
+
+It is not a no-op — mean IoU between refined and coarse masks is 0.7925, so it
+is moving boundaries substantially — and it does beat raw detector output by
++0.015, nearly matching erosion on recognition quality. It fails specifically on
+segmentation quality, 0.6733 against 0.6843.
+
+### Why: it was trained on a model of the error, not the error
+
+The training pairs were synthetic. Ground truth was dilated, translated and
+smoothed to imitate the detector's measured failure modes, on the reasoning that
+harvesting real pairs would cost hours of inference and buy nothing the
+annotations did not already contain.
+
+That reasoning was wrong, and this result is what it cost. What harvesting buys
+is exactly the thing synthesis cannot provide: the *real* joint distribution of
+detector error. The refiner learned to undo dilation-plus-blur because that is
+what it was shown, and the detector's actual mistakes are correlated with image
+content — faint filaments near the limb, neighbouring instances competing for
+prototypes — in ways a hand-specified corruption does not reproduce.
+
+The simulation was calibrated on *severity* (coarse IoU 0.72 against the
+detector's real SQ 0.679) and that was mistaken for calibration on *character*.
+Matching the average amount of damage says nothing about matching its structure.
+
+### What this does not overturn
+
+The rim analysis stands: 64% of error is within two pixels of the boundary and
+eliminating it is worth +0.11 PQ. The refiner is the right shape of solution and
+the target is real. What failed is the training data, which is fixable.
+
+The honest next step is the one originally proposed and originally dismissed:
+run the detector over the training photographs, match each output to its ground
+truth, and train on those pairs. That is a few hours of CPU in a kernel, and it
+is now clearly justified rather than clearly wasteful.

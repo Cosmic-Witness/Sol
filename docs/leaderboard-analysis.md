@@ -1072,3 +1072,33 @@ artefact.
 The refiner loses to a parameterless morphological operation across all eight
 configurations tested. It stays out of the pipeline until it is retrained on real
 detector-versus-truth pairs rather than synthetic damage.
+
+## Dihedral TTA also loses (negative result)
+
+Eight rotations and reflections of each frame, masks inverse-transformed back,
+clustered across views and voted per pixel. The reasoning was that the earlier
+resolution negative was about *scale* — inflating objects past the sizes the
+anchor-free head learned — while rotation and reflection leave scale untouched
+and the solar disk has no canonical orientation.
+
+| | PQ |
+|---|---|
+| single view, shipped config | **0.4404** |
+| dihedral TTA, best of 12 fusion settings | 0.4035 |
+
+8715 view-masks over 106 photographs, about 10 per view. The augmentation is
+valid; the fusion is what loses. Two mechanisms are plausible and were not
+separated:
+
+- **Clustering errors.** Instances are not aligned across views — one view splits
+  a filament another keeps whole — so a greedy IoU link either merges distinct
+  filaments or fragments one, and both are expensive under PQ.
+- **Voting erodes.** Requiring half the contributing views to agree on a pixel
+  trims the boundary, on top of a model whose masks already needed trimming, and
+  the interaction with the existing erosion was swept but never disentangled.
+
+The honest reading is that this tests *my fusion implementation*, not test-time
+augmentation as an idea. A cleaner design would fuse soft mask probabilities
+before binarisation rather than voting on already-binarised masks, which is what
+Ultralytics' refusal to support `augment=True` on segmentation models forced.
+That is worth revisiting; this implementation is not worth keeping.

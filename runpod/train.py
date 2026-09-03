@@ -1,43 +1,27 @@
-"""Fine-tune exp_002 at 2048 with full-resolution mask supervision.
+"""Fine-tune exp_002 at 2048 on rasterisation-corrected targets.
 
-What this run tests, and why it is worth money
-----------------------------------------------
-Post-hoc erosion of a single pixel raised the leaderboard from 0.33 to 0.36 —
-the largest gain of the project. That is evidence, not a trick: the model traces
-filaments systematically too fat, and trimming them both tightens IoU on real
-matches and drops borderline blobs below the minimum area.
+What this run tests
+-------------------
+Every detector trained on this project has been fitted to targets 10.8% larger in
+area than what the scorer measures: Ultralytics rasterises with cv2.fillPoly, the
+competition scores with pycocotools, and on a filament — nearly all perimeter —
+that convention gap is large. Measured target-versus-scorer agreement is IoU
+0.898.
 
-Ultralytics supervises masks at `mask_ratio=4` by default — quarter resolution,
-upsampled afterwards. On structures a few pixels wide that is precisely the
-mechanism that would produce bloated boundaries, because the loss never sees the
-edge at the scale the edge exists at. `overlap_mask=True` compounds it by
-encoding every instance into one layer with overlaps resolved by index, when
-filaments are disjoint and each deserves its own plane.
+A half-pixel inward polygon offset closes it to 0.959, with the area ratio moving
+from 1.111 to 0.986. That correction lives in coordinate space, so unlike the 1px
+erosion it has no quantisation floor, and unlike a post-hoc trim it is applied
+per instance by the geometry rather than as one constant everywhere.
 
-So this run fixes at the source what erosion corrects after the fact:
-`mask_ratio=1`, `overlap_mask=False`, at 2048, continuing exp_002's weights.
+This run retrains on those corrected targets. It supersedes the mask_ratio=1
+experiment this file previously carried: finer loss supervision against a target
+that is 11% too fat reproduces the fat target more faithfully, so the defect was
+never in the supervision resolution.
 
-It carries its own falsification test. If the mechanism is right, the optimal
-post-hoc erosion should move from -1 towards 0 — a better-calibrated model needs
-less trimming. If the optimum stays at -1, the fatness came from somewhere else
-and this hypothesis is wrong regardless of what the score does.
-
-
-Choices here are made for throughput per dollar rather than for the last
-fraction of accuracy, because the budget is small and fixed.
-
-- **Starts from exp_002's weights.** 149 epochs at 1280 are already paid for,
-  and validation showed the model still improving when its clock stopped.
-  Restarting from COCO would spend the entire budget re-learning what exists.
-- **Validation every epoch, kept.** An earlier draft set `val_period=3` to buy
-  back validation time. That key does not exist in this Ultralytics version —
-  it is absent from DEFAULT_CFG_DICT — so it would have failed at launch on
-  paid time. Validation costs roughly a tenth of an epoch here (180 records
-  forward-only against 974 forward and backward), which is worth paying for a
-  checkpoint-selection signal.
-- **AMP and channels_last.** Both are free throughput on Ada hardware.
-- **Stops on time, not on epochs.** The constraint is dollars, so the run is
-  told how long it may live rather than how many epochs to complete.
+No wall-clock budget. Ultralytics writes a checkpoint every epoch, and every run
+on this project that was stopped by a clock was still improving when it stopped.
+Training ends on `patience` or on the pod being torn down, and the checkpoint
+survives either way.
 """
 
 from __future__ import annotations
@@ -52,7 +36,10 @@ def main() -> None:
     parser.add_argument("--data", required=True)
     parser.add_argument("--weights", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--hours", type=float, default=3.5)
+    parser.add_argument("--patience", type=int, default=40,
+                        help="epochs without improvement before stopping. There is no\n"
+                             "time budget: every clock-stopped run on this project was\n"
+                             "still improving when its clock ran out.")
     parser.add_argument("--imgsz", type=int, default=2048)
     parser.add_argument("--batch", type=int, default=4)
     args = parser.parse_args()
@@ -72,18 +59,15 @@ def main() -> None:
     # explicit and each rung is attempted in turn.
     first = args.batch * 2 if total >= 40 else args.batch
     ladder = [b for b in (first, first // 2, first // 4) if b >= 1]
-    print(f"batch ladder {ladder} at imgsz {args.imgsz}, budget {args.hours} h", flush=True)
+    print(f"batch ladder {ladder} at imgsz {args.imgsz}, stopping on patience {args.patience}", flush=True)
 
     started = time.time()
     for position, batch in enumerate(ladder):
-        remaining = args.hours - (time.time() - started) / 3600
-        if remaining <= 0.1:
-            raise SystemExit("budget exhausted before training could start")
         try:
             print(f"\n=== attempt {position + 1}/{len(ladder)}: batch {batch}, "
                   f"{remaining:.2f} h left ===", flush=True)
             train_once(YOLO(args.weights), args.data, args.imgsz, batch,
-                       remaining, args.out)
+                       args.patience, args.out)
             break
         except (RuntimeError, torch.cuda.OutOfMemoryError) as error:
             if "out of memory" not in str(error).lower() or position == len(ladder) - 1:
@@ -100,13 +84,12 @@ def main() -> None:
             print(f"{candidate}: {path.stat().st_size / 1e6:.1f} MB", flush=True)
 
 
-def train_once(model, data, imgsz, batch, hours, out):
+def train_once(model, data, imgsz, batch, patience, out):
     model.train(
         data=data,
         imgsz=imgsz,
         batch=batch,
-        epochs=1000,              # never reached; `time` is the real stop
-        time=hours,
+        epochs=1000,              # a ceiling; patience decides
         project=out,
         name="ft2048",
         exist_ok=True,
@@ -118,11 +101,9 @@ def train_once(model, data, imgsz, batch, hours, out):
         # The point of the run. Default 4 supervises masks at a quarter of the
         # input resolution; at 2048 that is a 512px target for barbs a few
         # pixels wide, and the boundary is never seen at the scale it exists at.
-        mask_ratio=1,
         # Filaments are disjoint by construction, so encoding every instance
         # into one layer with index-resolved overlaps is the wrong
         # representation and lets neighbouring boundaries bleed.
-        overlap_mask=False,
         amp=True,
         workers=8,
         cache=False,              # 974 images at 2048 will not fit in pod RAM
@@ -130,7 +111,7 @@ def train_once(model, data, imgsz, batch, hours, out):
         hsv_h=0.0, hsv_s=0.0, hsv_v=0.3,
         fliplr=0.5, flipud=0.5, degrees=15.0,
         mosaic=0.0,               # pasting four disks into a frame invents limbs
-        patience=100,
+        patience=patience,
         seed=2026,
         verbose=True,
     )

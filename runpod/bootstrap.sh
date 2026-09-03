@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# One-shot RunPod job: fine-tune exp_002 at 2048, submit, stop.
+# One-shot RunPod job: retrain at 2048 on rasterisation-corrected targets, submit, stop.
 #
 # Every second this pod is alive costs money, so the script is written to spend
 # as little of its life as possible not training:
@@ -8,15 +8,16 @@
 #   - fetches only the two files it needs, in parallel with the pip install
 #   - submits to Kaggle from inside the pod, so nothing has to be retrieved
 #     afterwards and the pod can die immediately
-#   - stops on a wall-clock budget, not an epoch count, because the budget is
-#     denominated in dollars
+#   - stops on convergence, not a clock: every clock-stopped run on this project
+#     was still improving when its clock ran out, and Ultralytics checkpoints every
+#     epoch so a torn-down pod keeps its work
 #
 # Requires KAGGLE_USERNAME and KAGGLE_KEY in the environment.
-# Usage:  bash bootstrap.sh [TRAIN_HOURS]      (default 3.5)
+# Usage:  bash bootstrap.sh [PATIENCE]         (default 40 epochs)
 #
 set -euo pipefail
 
-TRAIN_HOURS="${1:-3.5}"
+PATIENCE="${1:-40}"
 RATE_PER_HOUR="${RATE_PER_HOUR:-0.34}"
 REPO_URL="https://github.com/Cosmic-Witness/Sol"
 BRANCH="claude/kaggle-credentials-setup-f7nudy"
@@ -26,7 +27,7 @@ COMP=filament-segmentation-2026
 start=$(date +%s)
 say() { echo "[$(printf '%5.1f' "$(echo "($(date +%s)-$start)/60"|bc -l)")m] $*"; }
 
-say "budget: ${TRAIN_HOURS} h training at approx \$${RATE_PER_HOUR}/h = \$$(echo "$TRAIN_HOURS*$RATE_PER_HOUR"|bc -l|cut -c1-4)"
+say "training until ${PATIENCE} epochs without improvement; approx \$${RATE_PER_HOUR}/h"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 cd "$WORK"
@@ -67,7 +68,7 @@ say "dataset prepared"
 
 python "$WORK/Sol/runpod/train.py" \
   --data "$WORK/yolo_ds/data.yaml" --weights "$WEIGHTS" \
-  --out "$WORK/runs" --hours "$TRAIN_HOURS"
+  --out "$WORK/runs" --patience "$PATIENCE"
 say "training finished"
 
 BEST="$WORK/runs/ft2048/weights/best.pt"
@@ -96,5 +97,5 @@ python -m experiments.exp_002_yolo_seg.src.predict \
 say "submission written"
 
 kaggle competitions submit -c "$COMP" -f "$WORK/submission.csv" \
-  -m "exp_006: @2048 mask_ratio=1 overlap_mask=False, conf $BEST_CONF grow $BEST_GROW (val PQ $BEST_PQ)"
+  -m "exp_010: @2048 retrained on 0.5px polygon-offset targets, conf $BEST_CONF grow $BEST_GROW (val PQ $BEST_PQ)"
 say "SUBMITTED. Pod may be terminated."

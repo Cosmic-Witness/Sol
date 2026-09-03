@@ -933,3 +933,60 @@ training run rather than in a paid experiment.
 The paid `mask_ratio=1` experiment is withdrawn. Finer loss supervision against a
 target that is 11% too fat reproduces the fat target more faithfully; the defect
 was never in the supervision resolution.
+
+## Where the mask error actually lives
+
+The claim under test: that SQ 0.68 means masks are wrong deep inside the object,
+making it a representational failure that no boundary work can reach. Measured
+over 124 matched pairs at the shipped operating point, bucketing every
+disagreement pixel by its distance to the ground-truth boundary:
+
+| distance from GT boundary | FP px | FN px | share | cumulative |
+|---|---|---|---|---|
+| 0-1 | 14668 | 13580 | 41.4% | 41.4% |
+| 1-2 | 7687 | 7797 | 22.7% | **64.2%** |
+| 2-3 | 4154 | 4879 | 13.3% | 77.4% |
+| 3-5 | 2554 | 3319 | 8.6% | 86.0% |
+| 5-8 | 1361 | 1724 | 4.5% | 90.5% |
+| 8+ | 5062 | 1384 | 9.5% | 100% |
+
+**64% of the disagreement is within two pixels of the boundary, 77% within
+three.** It is overwhelmingly a rim effect. Only 22.6% lies deeper than 3px, so
+the representational-failure reading is a minority of the error.
+
+Converting that to score, with disagreement at 0.472x the intersection:
+
+| eliminate | SQ | PQ at RQ 0.639 |
+|---|---|---|
+| rim only, <=2px | 0.8554 (+0.176) | 0.4347 -> **0.5474** |
+| everything <=3px | 0.9036 (+0.224) | -> 0.5783 |
+| interior only, >3px | 0.7324 (+0.053) | -> 0.4687 |
+
+**The rim is worth three times the interior.** Perfect boundaries would be worth
++0.11 PQ; perfect interiors +0.03.
+
+### But this does not vindicate the approach taken so far
+
+The rim holds most of the error *and* post-hoc correction can barely touch it.
+A global 1px erosion applies the same trim to every mask regardless of whether
+that mask was one pixel fat, three pixels fat, or already correct, and one pixel
+is the quantisation floor. It captured about 0.023 of an available 0.11.
+
+So both readings were partly wrong. The claim that boundary work is nearly
+exhausted is false — the boundary is where 64% of the error is. The claim that
+this justified more post-hoc geometry is also false — the blunt instrument is
+spent, and what remains needs a model that predicts boundaries per-pixel.
+
+That is the argument for a second-stage refiner, and it is a stronger argument
+than the one originally offered for it. Not "the error is deep inside where
+refinement is the only reach", but "the error is at the rim, the rim is worth
++0.11 PQ, and a global constant recovers a fifth of it".
+
+### One signal that does support the low-rank reading
+
+The deepest band is lopsided: 5062 FP pixels against 1384 FN beyond 8px, a
+3.7:1 skew towards over-prediction, where every other band is near parity. Far
+from any true boundary the model adds mask rather than missing it, which is what
+leakage between instances sharing a smooth 32-prototype basis would look like.
+It is 9.5% of the error, not the main event, but it is the part a refinement
+stage on isolated crops would remove by construction.

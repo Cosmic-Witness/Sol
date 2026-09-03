@@ -109,6 +109,12 @@ def main() -> None:
                              "0 by default because the refiner is trained to correct "
                              "the fat-mask bias itself and doing both would double-count")
     parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument("--post-grow", type=int, default=0,
+                        help="morphology applied AFTER refining; negative erodes. "
+                             "Distinct from --grow, which acts on the detector mask "
+                             "before the refiner sees it. Whether this helps is an "
+                             "empirical question: the refiner was measured to "
+                             "under-correct the fat-mask bias, not over-correct it.")
     args = parser.parse_args()
 
     from ultralytics import YOLO
@@ -135,6 +141,10 @@ def main() -> None:
         refined = []
         for score, coarse in candidates:
             new = refine_instance(model, device, image, coarse, args.threshold)
+            if args.post_grow:
+                k = cv2.getStructuringElement(
+                    cv2.MORPH_ELLIPSE, (2 * abs(args.post_grow) + 1,) * 2)
+                new = (cv2.dilate if args.post_grow > 0 else cv2.erode)(new, k).astype(np.uint8)
             if int(new.sum()) < args.min_area:
                 continue
             inter = int((new & coarse).sum())

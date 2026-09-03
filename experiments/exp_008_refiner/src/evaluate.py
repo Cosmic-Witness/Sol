@@ -86,7 +86,7 @@ def main() -> None:
 
     images_dir = Path(args.images)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    thresholds = (0.4, 0.5, 0.6)
+    thresholds = (0.5, 0.6, 0.7, 0.8)
 
     raw_by_stem, refined_by_stem = {}, {t: {} for t in thresholds}
     agreement = []
@@ -139,16 +139,32 @@ def main() -> None:
         print(f"{'detector + refiner @ ' + str(threshold):>34}{r['pq']:>9.4f}{r['sq']:>8.4f}"
               f"{r['rq']:>8.4f}{r['tp']:>7}{r['fp']:>7}{r['fn']:>7}", flush=True)
 
-    best_threshold = max(results, key=lambda t: results[t]["pq"])
-    best = results[best_threshold]
+    # Stacking was refused earlier on the argument that the refiner and the
+    # erosion correct the same fat-mask bias, so applying both would
+    # double-count. The measurement contradicts the premise: the refiner reaches
+    # SQ 0.6733 against erosion's 0.6843, so it *under*-corrects rather than
+    # over-corrects, and a further trim may still be owed. Assumption tested
+    # rather than carried.
+    for threshold in thresholds:
+        r = score(refined_by_stem[threshold], erode=True)
+        results[("erode", threshold)] = r
+        print(f"{'refiner @ ' + str(threshold) + ' + 1px erosion':>34}{r['pq']:>9.4f}"
+              f"{r['sq']:>8.4f}{r['rq']:>8.4f}{r['tp']:>7}{r['fp']:>7}{r['fn']:>7}", flush=True)
+
+    best_key = max(results, key=lambda t: results[t]["pq"])
+    best = results[best_key]
+    best_erode = isinstance(best_key, tuple)
+    best_threshold = best_key[1] if best_erode else best_key
     print(f"\nmean IoU(refined, coarse) = {np.mean(agreement):.4f}", flush=True)
     print("  near 1.0 would mean the refiner is a no-op regardless of PQ", flush=True)
-    print(f"best refined PQ {best['pq']:.4f} at threshold {best_threshold} "
-          f"vs baseline {baseline['pq']:.4f} ({best['pq'] - baseline['pq']:+.4f})", flush=True)
+    print(f"best refined PQ {best['pq']:.4f} at threshold {best_threshold}"
+          f"{' + erosion' if best_erode else ''} vs baseline {baseline['pq']:.4f} "
+          f"({best['pq'] - baseline['pq']:+.4f})", flush=True)
 
     Path(args.out).write_text(json.dumps({
         "baseline": baseline, "no_erode": no_erode,
         "refined": best, "best_threshold": best_threshold,
+        "best_erode": best_erode,
         "by_threshold": {str(k): v for k, v in results.items()},
         "mean_iou_refined_vs_coarse": float(np.mean(agreement)) if agreement else None,
     }, indent=2))

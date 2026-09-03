@@ -81,7 +81,9 @@ def main() -> None:
          "--images", root / "test" / "test_images",
          "--output", OUT_DIR / "submission.csv",
          "--imgsz", 2048, "--conf", 0.35, "--min-area", 300,
-         "--threshold", verdict["best_threshold"]])
+         "--threshold", verdict["best_threshold"],
+         # -1 erodes the refined mask; the evaluation decides whether that wins.
+         "--post-grow", -1 if verdict.get("best_erode") else 0])
     print("\nDONE.", flush=True)
 
 

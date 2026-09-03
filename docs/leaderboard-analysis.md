@@ -1102,3 +1102,30 @@ augmentation as an idea. A cleaner design would fuse soft mask probabilities
 before binarisation rather than voting on already-binarised masks, which is what
 Ultralytics' refusal to support `augment=True` on segmentation models forced.
 That is worth revisiting; this implementation is not worth keeping.
+
+## The refiner scores 0.35 on the leaderboard, as validation predicted
+
+Submitted as a deliberate regression datum, since validation-to-public transfer
+had been erratic enough that a 0.008 deficit did not obviously predict the
+leaderboard.
+
+It did. Public 0.35 against 0.36, rank ~136/502 against ~92/502.
+
+| change | validation | public | transfer |
+|---|---|---|---|
+| resolution 1280 -> 2048 | +0.033 | +0.010 | 30% |
+| 1px erosion | +0.034 | +0.030 | 88% |
+| refiner (regression) | -0.008 | -0.010 | 122% |
+
+Three data points, transfer between 30% and 122%. The useful reading is not an
+average but the sign: **every change has transferred in the direction validation
+predicted**, including this one. The magnitude is unreliable — a gain worth 0.033
+on validation bought anywhere between 0.010 and 0.030 — but the direction has
+never flipped.
+
+That is enough to keep using validation as a *gate* while distrusting it as a
+*forecast*. The guard that refuses to submit a losing configuration was right
+three times today; overriding it deliberately, once, and labelling the submission
+as a regression cost 0.01 and bought the calibration point above.
+
+Best remains **0.36, rank ~92 of 502 (top 18.3%)**.

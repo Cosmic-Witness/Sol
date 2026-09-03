@@ -137,6 +137,13 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=2e-3)
     parser.add_argument("--width", type=int, default=32)
     parser.add_argument("--workers", type=int, default=4)
+    # Accepted and ignored. A kernel version already queued passes this flag,
+    # and the trainer is cloned from the repository at run time while the driver
+    # is uploaded with the kernel — so the two can disagree. Rejecting it would
+    # crash that run after it had already built its crops. Stopping is decided by
+    # --patience regardless of what is passed here.
+    parser.add_argument("--time-budget", type=float, default=None,
+                        help="deprecated and ignored; training stops on convergence")
     parser.add_argument("--patience", type=int, default=25,
                         help="epochs without validation improvement before stopping. "
                              "There is deliberately no wall-clock budget: checkpoints "
@@ -144,6 +151,10 @@ def main() -> None:
                              "kernel output, so an interrupted session keeps its work "
                              "and a clock would only stop a run that was still learning.")
     args = parser.parse_args()
+
+    if args.time_budget is not None:
+        print(f"note: --time-budget {args.time_budget} ignored; "
+              f"stopping on {args.patience} epochs without improvement", flush=True)
 
     torch.manual_seed(2026)
     np.random.seed(2026)

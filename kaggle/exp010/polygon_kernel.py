@@ -32,6 +32,7 @@ budget no single paid run could.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -106,25 +107,63 @@ def main() -> None:
 
     from ultralytics import YOLO
 
-    model = YOLO(str(start))
-    model.train(
-        data=str(DATASET_DIR / "data.yaml"),
-        imgsz=IMGSZ, batch=2, epochs=1000, patience=PATIENCE,
-        project=str(RUNS_DIR), name="polygon", exist_ok=True,
-        lr0=0.0005, warmup_epochs=1.0,
-        hsv_h=0.0, hsv_s=0.0, hsv_v=0.3,
-        fliplr=0.5, flipud=0.5, degrees=15.0, mosaic=0.0,
-        cache=False, workers=2, seed=2026, verbose=True,
-    )
+    def fit(mask_ratio: int) -> None:
+        model = YOLO(str(start))
+        model.train(
+            data=str(DATASET_DIR / "data.yaml"),
+            imgsz=IMGSZ, batch=2, epochs=1000, patience=PATIENCE,
+            project=str(RUNS_DIR), name="polygon", exist_ok=True,
+            lr0=0.0005, warmup_epochs=1.0,
+            mask_ratio=mask_ratio, overlap_mask=True,
+            hsv_h=0.0, hsv_s=0.0, hsv_v=0.3,
+            fliplr=0.5, flipud=0.5, degrees=15.0, mosaic=0.0,
+            cache=False, workers=2, seed=2026, verbose=True,
+        )
+
+    # `mask_ratio=1` supervises the mask loss at the full 2048 grid instead of
+    # the default 512. Two thirds of the model's error sits within two pixels of
+    # the boundary, and at a quarter resolution that entire band is invisible to
+    # the loss. It is only worth asking for now that the targets themselves are
+    # correct -- against an 11%-fat target, finer supervision reproduces the fat
+    # target more faithfully, which is why this was withdrawn before.
+    #
+    # The cost is upsampling the 32 prototypes to 2048 square inside the loss,
+    # about a gigabyte under autocast. If the T4 cannot hold it, half resolution
+    # still doubles what the default sees.
+    try:
+        fit(1)
+    except (RuntimeError, torch.cuda.OutOfMemoryError) as exc:
+        if "out of memory" not in str(exc).lower():
+            raise
+        print(f"\nmask_ratio=1 did not fit ({exc}); falling back to 2", flush=True)
+        torch.cuda.empty_cache()
+        fit(2)
 
     best = RUNS_DIR / "polygon" / "weights" / "best.pt"
     if not best.exists():
         raise SystemExit("no checkpoint produced")
 
+    # The shipped operating point (conf 0.35, one-pixel erosion) was tuned for a
+    # detector trained on fat targets. This detector should not need the erosion
+    # at all, but that is a prediction, not a measurement -- so measure it.
+    sweep_path = OUT_DIR / "nearmiss.json"
+    run([sys.executable, "-m", "experiments.exp_005_postproc.src.nearmiss",
+         "--weights", best,
+         "--annotations", root / "train" / ANNOTATION_NAME,
+         "--images", root / "train" / "train_images",
+         "--imgsz", IMGSZ, "--out", sweep_path,
+         "--dump-cache", OUT_DIR / "candidates.json"])
+
+    sweep = json.loads(Path(sweep_path).read_text())["sweep"]
+    top = max(sweep, key=lambda row: row["pq"])
+    print(f"\nbest validation point: {json.dumps(top, indent=2)}", flush=True)
+
     run([sys.executable, "-m", "experiments.exp_002_yolo_seg.src.predict",
          "--weights", best, "--images", root / "test" / "test_images",
          "--output", OUT_DIR / "submission.csv",
-         "--imgsz", IMGSZ, "--conf", 0.35, "--min-area", 300, "--grow", 0])
+         "--imgsz", IMGSZ,
+         "--conf", top["conf"], "--min-area", top["min_area"],
+         "--grow", top["grow"]])
     print("\nDONE.", flush=True)
 
 

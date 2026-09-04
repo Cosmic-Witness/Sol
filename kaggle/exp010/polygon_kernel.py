@@ -139,7 +139,14 @@ def main() -> None:
             data=str(DATASET_DIR / "data.yaml"),
             imgsz=IMGSZ, batch=2, epochs=400, patience=PATIENCE,
             project=str(RUNS_DIR), name=RUN_NAME, exist_ok=True,
-            lr0=0.0005, warmup_epochs=1.0,
+            # `optimizer` must be named. Ultralytics' default of "auto" prints
+            # "ignoring 'lr0=...'" and picks its own: with 400 epochs over 487
+            # steps it lands past the 10000-iteration threshold and chooses MuSGD
+            # at 0.01, a from-scratch learning rate. This is a fine-tune of a
+            # model that already scores 0.44 -- it has to shed a systematic
+            # half-pixel bias and re-learn a size prior, not start over.
+            optimizer="AdamW", lr0=0.001, lrf=0.01, cos_lr=True,
+            warmup_epochs=3.0,
             mask_ratio=mask_ratio, overlap_mask=True,
             hsv_h=0.0, hsv_s=0.0, hsv_v=0.3,
             fliplr=0.5, flipud=0.5, degrees=15.0, mosaic=0.0,

@@ -138,11 +138,11 @@ def main() -> None:
         raise SystemExit("no exp_002 checkpoint to start from")
     print(f"starting from exp_002 {seeds[0]}", flush=True)
 
-    def fit(mask_ratio: int) -> None:
+    def fit(mask_ratio: int, batch: int) -> None:
         model = YOLO(str(seeds[0]))
         model.train(
             data=str(DATASET_DIR / "data.yaml"),
-            imgsz=IMGSZ, batch=2, epochs=400, patience=PATIENCE,
+            imgsz=IMGSZ, batch=batch, epochs=400, patience=PATIENCE,
             project=str(RUNS_DIR), name=RUN_NAME, exist_ok=True,
             # `optimizer` must be named. Ultralytics' default of "auto" prints
             # "ignoring 'lr0=...'" and picks its own: with 400 epochs over 487
@@ -159,17 +159,29 @@ def main() -> None:
         )
 
     # Upsampling the 32 prototypes to 2048 square inside the loss costs about a
-    # gigabyte under autocast. If the T4 cannot hold it, half resolution still
-    # doubles what the default sees.
-    try:
-        fit(1)
-    except (RuntimeError, torch.cuda.OutOfMemoryError) as exc:
-        if "out of memory" not in str(exc).lower():
-            raise
-        print(f"\nmask_ratio=1 did not fit ({exc}); falling back to 2", flush=True)
-        torch.cuda.empty_cache()
-        shutil.rmtree(RUNS_DIR / RUN_NAME, ignore_errors=True)
-        fit(2)
+    # gigabyte under autocast, and whether a T4 holds it alongside the rest is
+    # untested. The ladder gives up the batch before it gives up the resolution:
+    # full-resolution supervision is the change with a mechanism behind it, and
+    # without it the half-pixel polygon offset is an eighth of a pixel on the
+    # loss grid and does nothing. Batch size is the cheaper concession, since
+    # Ultralytics accumulates to a nominal batch of 64 either way.
+    for mask_ratio, batch, note in ((1, 2, "full resolution"),
+                                    (1, 1, "full resolution, single image"),
+                                    (2, 2, "half resolution")):
+        try:
+            print(f"\nattempting {note} "
+                  f"(mask_ratio={mask_ratio}, batch={batch})", flush=True)
+            fit(mask_ratio, batch)
+            break
+        except (RuntimeError, torch.cuda.OutOfMemoryError) as exc:
+            if "out of memory" not in str(exc).lower():
+                raise
+            print(f"\n{note} did not fit: {exc}", flush=True)
+            torch.cuda.empty_cache()
+            # A partial run directory would be resumed rather than replaced.
+            shutil.rmtree(RUNS_DIR / RUN_NAME, ignore_errors=True)
+    else:
+        raise SystemExit("no configuration fitted in memory")
 
     print("\nDONE.", flush=True)
 

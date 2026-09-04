@@ -1129,3 +1129,68 @@ three times today; overriding it deliberately, once, and labelling the submissio
 as a regression cost 0.01 and bought the calibration point above.
 
 Best remains **0.36, rank ~92 of 502 (top 18.3%)**.
+
+## exp_013 — what the 456 false positives are actually made of
+
+Three post-processing experiments have now been run against this error. Each
+targeted one failure mode, and each assumed the mode it targeted was the
+dominant one. None of them checked. `experiments/exp_013_errors/src/decompose.py`
+classifies every unmatched prediction and every unmatched truth in the
+validation set by its best overlap with the other side, running off the exp_005
+candidate cache so it needs neither inference nor GPU. It reproduces the shipped
+operating point's PQ to seven decimal places (0.4403668), so the accounting is
+against the real thing.
+
+| class | overlap with the other side | false positives | false negatives |
+|---|---|---|---|
+| near | 0.25-0.50 | 150 (33%) | 153 (32%) |
+| graze | 0.10-0.25 | 48 | 28 |
+| sliver | 0-0.10 | 34 | 14 |
+| **orphan** | **none at all** | **224 (49%)** | **285 (59%)** |
+
+**Half the error is instances one side does not acknowledge exist.** 224
+predictions overlap no ground truth anywhere in the image, and 285 ground-truth
+filaments are overlapped by no prediction anywhere in the image. No boundary
+method can touch either class. The refiner, the one-pixel erosion, the polygon
+offset and full-resolution supervision all operate on a mask that is already on
+the right object.
+
+Two hypotheses die here. **Splits: 2. Merges: 5.** Out of 936 failures. The
+detector is not fragmenting filaments into pieces or fusing neighbours together,
+which was the natural reading of a 32-prototype basis shared by long thin
+objects. Instance identity is essentially never the problem.
+
+### What each class is worth
+
+Each oracle removes exactly one class and leaves the rest untouched, so the
+deltas are the isolated value of solving it.
+
+| oracle | PQ | SQ | RQ | delta |
+|---|---|---|---|---|
+| measured | 0.4404 | 0.6843 | 0.6436 | — |
+| every orphan and sliver FP removed | 0.4883 | 0.6843 | 0.7137 | +0.048 |
+| every near miss promoted to a match | 0.4975 | 0.6565 | 0.7578 | +0.057 |
+| every false positive removed | 0.5329 | 0.6843 | 0.7788 | +0.093 |
+| every false negative removed | 0.5389 | 0.6843 | 0.7875 | +0.099 |
+| perfect masks on the matches already made | **0.6436** | 1.0 | 0.6436 | **+0.203** |
+
+The near-miss figure is deliberately pessimistic: it enters each promoted pair
+at IoU exactly 0.5, the least it can be worth, which is why SQ falls. At a
+realistic 0.65 the same promotion is worth +0.075.
+
+### What this says about where to spend
+
+Mask quality is still the largest single lever at +0.203, and the near-miss
+class is reachable by the same work: 150 predictions sitting at mean IoU 0.392
+need 0.108 more to become matches. Taking SQ from 0.684 to a modest 0.75 while
+carrying two thirds of the near misses over the line puts validation at 0.528 —
+which at the observed validation-to-leaderboard offset of 0.078 is a public 0.45.
+
+So boundary work is not exhausted. What is exhausted is *post-hoc* boundary
+work, exactly as exp_005 and exp_009 measured. The remaining boundary gain has
+to come from the targets and the supervision, which is what exp_010 now carries.
+
+But the orphan class is co-equal at +0.048 for the predictions alone, and it is
+not addressable by anything currently planned. Whether it is addressable at all
+is the next question, because "overlaps no ground truth" is measured against one
+annotator, and two annotators agree at PQ 0.337.

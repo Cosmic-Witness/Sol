@@ -97,6 +97,22 @@ ladder concedes batch size before it concedes mask resolution.
 Plus: no time budget, and checkpoints in the kernel output so Kaggle's 12-hour
 cap is a checkpoint rather than a deadline.
 
+**That last part was an assumption and is now a measurement.** The whole
+three-session plan rests on a kernel being allowed to list itself in
+`kernel_sources` and finding the previous version's `/kaggle/working` mounted.
+Had it not been, `restore_previous_run` would have returned False every time,
+training would have restarted from exp_002 each session, and three twelve-hour
+sessions would have produced one session's progress -- discovered at the
+twelve-hour mark. `kaggle/selfref/` establishes it in two minutes instead: the
+push is accepted, and the marker it leaves at the exact path exp_010 globs for
+comes back mounted at `/kaggle/input/sol-selfref-probe/runs/polygon/weights/last.pt`.
+Kaggle mounts the latest successful version, so sessions chain rather than all
+reading the first.
+
+The one operational consequence: session one must be pushed *without* the
+self-reference, since there is no output to mount yet. It is added before session
+two.
+
 **exp_015 — submit, separately, on CPU.** Training and submission were one kernel,
 which meant training had to end early enough to leave room for inference or
 nothing came out. Now exp_015 takes a submission from whatever checkpoint exists,

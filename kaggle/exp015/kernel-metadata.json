@@ -1,0 +1,15 @@
+{
+  "id": "cosmicwitness/sol-exp015-submit",
+  "title": "sol exp015 submit",
+  "code_file": "submit_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": ["cosmicwitness/sol-exp010-polygon"],
+  "model_sources": []
+}

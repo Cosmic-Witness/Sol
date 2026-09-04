@@ -197,13 +197,21 @@ is the binding constraint, and the responses in order of cost:
    4. Connected components on ground-truth masks score PQ 0.9995, so instance
    separation is not the obstacle it appeared to be.
 
-**Secondary lever, if a cheap one is wanted:** the 305 truths that are seen and
+**Secondary lever — tried, and closed.** The 305 truths that are seen and
 disbelieved. Promoting *k* right and *m* wrong candidates from the discarded band
 moves PQ to `(578.2 + 0.65k) / (1313 + 0.5k + 0.5m)`, so break-even is two wrong
 per one right — precision above 33% against a 10.5% base rate. exp_005's
 gradient-boosted model over four geometric features could not clear it, and its
 verdict was that the features "add nothing beyond what confidence already
-encodes". exp_019 tries a quantity confidence genuinely does not see: confidence
-scores the *box*, while how fast the mask field falls away from its cut says
-whether the mask is a filament holding a strongly positive interior or a smear
-that barely crosses zero.
+encodes". exp_019 tried a quantity confidence structurally cannot encode —
+confidence scores the *box*, while how fast the mask field falls away from its
+cut says whether the mask is a filament holding a strongly positive interior or a
+smear that barely crosses zero — and it does add information: average precision
+0.7248 against raw confidence's 0.7150. It still cannot promote. At the most
+conservative threshold it adds 23 false positives and not one true positive. A
+better ordering over the whole pool is not the same as being right about its
+tail, and +0.010 of average precision does not separate 305 truths from 1700
+candidates at a 10.5% base rate.
+
+That leaves no secondary lever. Every route that does not retrain the detector
+has now been measured and closed.

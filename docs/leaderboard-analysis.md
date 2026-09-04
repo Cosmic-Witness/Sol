@@ -1580,3 +1580,55 @@ error either, given strictly more information.
 
 Two independent methods have now failed to predict per-instance boundary error.
 That is no longer a fact about either method.
+
+## exp_019 — the field profile is a better ranker and still cannot promote (negative result)
+
+exp_016 found 305 validation truths with a candidate in the pool that matches
+them at IoU 0.5 and is discarded by the confidence floor. Break-even for
+promoting from that band is two wrong per one right — precision above 33% against
+a base rate near 10.5%.
+
+exp_005 tried and lost, and its verdict was that mask area, elongation, limb
+distance and solidity "add nothing beyond what confidence already encodes". This
+used a quantity confidence structurally cannot encode: confidence scores the
+*box*, while the profile of how fast the mask field falls away from its cut —
+free from exp_017's fourteen cached cuts — says whether the mask is a filament
+holding a strongly positive interior or a smear that barely crosses zero.
+
+**As a ranker it works.** Average precision over all candidate-record pairs, out
+of fold by photograph:
+
+| ranker | average precision |
+|---|---|
+| raw detector confidence | 0.7150 |
+| **field profile + confidence** | **0.7248** |
+| a model on confidence alone | 0.6833 |
+
+So unlike the geometric features, the field profile genuinely adds information —
++0.010 AP over the confidence it is given alongside. (The third row is the
+control on the estimator, not the feature: a gradient-boosted model fitted on
+confidence alone is *worse* than confidence itself, which is how much noise the
+estimator adds and why exp_005's comparison was harsher than it looked.)
+
+**As an emission rule it fails completely.** Every rule loses to the floor it was
+meant to improve on:
+
+| rule | PQ | TP | FP | FN |
+|---|---|---|---|---|
+| **confidence >= 0.35 (baseline)** | **0.4169** | 829 | 514 | 496 |
+| probability >= 0.35 | 0.3861 | 774 | 592 | 551 |
+| confidence >= 0.35 or probability >= 0.6 | 0.4088 | 831 | 571 | 494 |
+| confidence >= 0.35 or probability >= 0.8 | 0.4133 | **829** | 537 | 496 |
+
+The last row is the diagnosis. At the most conservative promotion threshold
+available, the rule adds 23 false positives and **not one true positive** — TP is
+unchanged at 829. The candidates the model is *most confident* about in the
+discarded band are all wrong.
+
+A better ordering across the whole pool is not the same as being right about its
+tail. The 305 recoverable truths sit among roughly 1700 discarded candidates at a
+10.5% base rate, and +0.010 of average precision does not begin to separate them.
+
+**The ranking lever is closed by the same route as the others.** Adding
+information helped the metric and not the decision, because the decision needs
+precision in a specific region and the information is diffuse.

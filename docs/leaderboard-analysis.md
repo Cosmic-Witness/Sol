@@ -1486,3 +1486,56 @@ produced on a T4 and submitted for the current best public score of 0.36.
 Inference on CPU is therefore not an approximation of the GPU path but the same
 computation, and every GPU hour can go to training. Ninety minutes of free CPU
 buys what would otherwise be twenty minutes of the scarce resource.
+
+## exp_018 — and scored against the detector, it is worse than doing nothing
+
+The training curve said the real-pair refiner had learned nothing. Scored on real
+detector output it turns out to have learned something, and that something is
+harmful:
+
+| configuration | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|
+| **detector + 1px erosion (shipped)** | **0.4404** | 0.6843 | 0.6436 | 845 | 456 | 480 |
+| detector, mask untouched | 0.4169 | 0.6708 | 0.6214 | 829 | 514 | 496 |
+| detector + real-pair refiner @0.5 | **0.4098** | 0.6649 | 0.6163 | 792 | 453 | 533 |
+| detector + synthetic refiner @0.6 (exp_009) | 0.4322 | 0.6733 | 0.6419 | 847 | 467 | 478 |
+
+It loses 0.031 PQ against the shipped configuration and 0.007 against not
+touching the mask at all. Every higher threshold is worse, every combination with
+erosion is far worse, and it destroys 53 true positives.
+
+The telling number is `mean_iou_refined_vs_coarse = 0.674`. The refiner is not
+passing its input through — it rewrites about a third of each mask. It simply
+rewrites it wrongly, every time, in a way its own validation IoU of 0.6335 was
+too coarse to reveal.
+
+### Second-stage mask refinement is closed
+
+Three measurements, two training regimes, opposite failure modes:
+
+| | learned its task? | PQ against the detector |
+|---|---|---|
+| exp_008/009, synthetic damage | yes, IoU 0.7208 -> 0.8529 | 0.4322 (-0.008), public 0.35 vs 0.36 |
+| exp_012/018, real detector errors | no, 0.6105 -> 0.6335 at epoch two | 0.4098 (-0.031) |
+
+The synthetic version learned a corruption that was not the real one. The real
+version had the right task and found no signal in it. Between them they exclude
+the idea rather than any particular execution of it, and the reason is already
+measured: the detector's boundaries agree with an annotator better than a second
+annotator's do, so what a refiner is being asked to predict is largely which way
+one particular person resolved an ambiguity.
+
+**Nothing downstream of the detector can fix the detector.** The remaining
+compute goes to exp_010.
+
+### The TPU is now idle, and should stay that way
+
+The refiner was the only TPU-shaped work in the project — Ultralytics does not
+run on XLA, and every dense-model experiment has lost to the instance model
+(exp_001 at 0.26, exp_004 at 0.28 converged with TTA, against exp_002's 0.32).
+
+A dense semantic model at 2048 fused into YOLO's instances is the one remaining
+idea that is not simply a fourth corrector, since it would supply independent
+evidence rather than a learned correction of YOLO's error. It is recorded here
+rather than built: three consecutive failures of post-detector correction are a
+pattern, and free compute is not a reason to add a fourth.

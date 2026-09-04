@@ -9,7 +9,11 @@
   "enable_tpu": false,
   "enable_internet": true,
   "dataset_sources": [],
-  "competition_sources": ["filament-segmentation-2026"],
-  "kernel_sources": ["cosmicwitness/sol-exp010-polygon"],
+  "competition_sources": [
+    "filament-segmentation-2026"
+  ],
+  "kernel_sources": [
+    "cosmicwitness/sol-exp002-yolo-seg"
+  ],
   "model_sources": []
 }

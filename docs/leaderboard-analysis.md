@@ -1194,3 +1194,50 @@ But the orphan class is co-equal at +0.048 for the predictions alone, and it is
 not addressable by anything currently planned. Whether it is addressable at all
 is the next question, because "overlaps no ground truth" is measured against one
 annotator, and two annotators agree at PQ 0.337.
+
+## The plan the decomposition implies
+
+Two defects in the shipped detector are now identified, both in training rather
+than in inference, and neither has ever been corrected:
+
+1. **The targets are 11% too fat.** Ultralytics rasterises polygons with
+   `cv2.fillPoly`, the scorer uses pycocotools, and over 250 instances the
+   training mask agrees with the scored mask at IoU 0.898. A half-pixel inward
+   polygon buffer takes that to 0.959.
+2. **The detector was trained at 1280 and every submission since has inferred at
+   2048.** exp_002's log is unambiguous: `imgsz=1280`, and `149 epochs completed
+   in 8.507 hours` — stopped by its `time=8.5` budget, not by convergence or by
+   patience. The model's prior over object sizes was fixed at 1280 and is being
+   asked about objects 1.6 times larger. That is also the most plausible reading
+   of why inference at 2560 and 3072 degrades so sharply.
+
+With the targets corrected, `mask_ratio=1` becomes worth asking for again. The
+default computes the mask loss on a 512 grid, where the two-pixel band holding
+two thirds of the error is invisible. It was withdrawn on the grounds that finer
+supervision against a fat target only reproduces the fat target more faithfully.
+That was true, and the polygon offset is what makes it stop being true.
+
+### Allocation
+
+| resource | job | status |
+|---|---|---|
+| GPU, 30 h from the weekly reset | exp_010: retrain at 2048 on corrected targets with full-resolution mask supervision, resuming across the 12-hour cap | ready |
+| CPU, unmetered | exp_015: measure the operating point on validation, predict the test set | dry run against the current checkpoint |
+| TPU | exp_012: the refiner retrained on real detector-versus-truth pairs | running |
+
+Training and submission are now separate kernels. The previous arrangement did
+both in one, which meant training had to finish inside the 12-hour cap with room
+to spare for inference or nothing came out. exp_015 runs on CPU on purpose:
+inference over 286 photographs is ninety minutes there and nothing on a T4, and
+every GPU hour belongs in the training kernel.
+
+### What would have to be true to reach 0.46
+
+The observed validation-to-leaderboard offset is stable across three
+submissions: 0.4064 -> 0.33, 0.4404 -> 0.36. Both gaps are 0.078. A public 0.46
+therefore needs a validation PQ near 0.54.
+
+From the oracle table, taking SQ from 0.684 to 0.75 while carrying two thirds of
+the 150 near misses over the matching threshold gives 0.528. Adding any part of
+the orphan class reaches 0.54. Neither number is out of reach for the two
+corrections above, and neither is guaranteed by them.

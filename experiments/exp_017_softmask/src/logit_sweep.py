@@ -154,7 +154,10 @@ def main() -> None:
         STASH.clear()
         result = model.predict(
             source=str(images_dir / stem), imgsz=args.imgsz,
-            conf=args.floor_conf, iou=0.7, max_det=300,
+            # These must match `predict.py` and `nearmiss.py`, or the row at
+            # level 0.0 is not the shipped configuration and the whole sweep
+            # measures a pipeline nobody submits.
+            conf=args.floor_conf, iou=0.60, max_det=100,
             retina_masks=True, verbose=False,
         )[0]
         scores = result.boxes.conf.cpu().numpy()
@@ -211,8 +214,16 @@ def main() -> None:
                       f"{row['tp']:7d}{row['fp']:7d}{row['fn']:7d}", flush=True)
 
     best = max(results, key=lambda r: r["pq"])
+    shipped = next((r for r in results
+                    if r["logit"] == 0.0 and r["conf"] == 0.35 and r["grow"] == -1), None)
+    if shipped is not None:
+        # exp_005 measured 0.4404 for this exact configuration. Anything else
+        # means the pool differs and no row here is comparable to it.
+        print(f"\nshipped configuration reproduces PQ {shipped['pq']:.7f} "
+              f"(exp_005 measured 0.4403668)", flush=True)
     print(f"\nbest: {json.dumps(best, indent=2)}")
-    Path(args.out).write_text(json.dumps({"sweep": results, "best": best}, indent=2))
+    Path(args.out).write_text(json.dumps(
+        {"sweep": results, "best": best, "shipped": shipped}, indent=2))
 
 
 if __name__ == "__main__":

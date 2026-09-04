@@ -1,0 +1,25 @@
+{
+  "truths": 1325,
+  "mean_candidates_per_photograph": 23.444444444444443,
+  "pool_covers_at_iou_0.5": {
+    "count": 1102,
+    "share": 0.8316981132075472
+  },
+  "of_those_already_above_conf_0.35": {
+    "count": 797,
+    "share": 0.7232304900181489
+  },
+  "pool_only_grazes": {
+    "count": 195,
+    "share": 0.1471698113207547
+  },
+  "invisible_to_the_detector": {
+    "count": 28,
+    "share": 0.021132075471698115
+  },
+  "covering_candidate_confidence": {
+    "median": 0.5452728271484375,
+    "p10": 0.14172025620937348
+  },
+  "oracle_reranker_recall": 0.8316981132075472
+}

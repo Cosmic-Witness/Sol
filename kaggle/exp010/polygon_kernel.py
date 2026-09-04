@@ -121,10 +121,15 @@ def main() -> None:
 
     from ultralytics import YOLO
 
-    resuming = restore_previous_run()
-    if resuming:
-        model = YOLO(str(RUNS_DIR / RUN_NAME / "weights" / "last.pt"))
-        model.train(resume=True)
+    if restore_previous_run():
+        last = RUNS_DIR / RUN_NAME / "weights" / "last.pt"
+        # The path, not `resume=True`. A bare True sends Ultralytics to
+        # `get_latest_run()`, which searches its own settings directory rather
+        # than this one and would silently resume the wrong run or none at all.
+        # Given the path it restores every argument from the checkpoint, so the
+        # dataset has to be back at the same location -- it is, DATASET_DIR is
+        # fixed and the split is deterministic.
+        YOLO(str(last)).train(resume=str(last))
         print("\nDONE (resumed session).", flush=True)
         return
 

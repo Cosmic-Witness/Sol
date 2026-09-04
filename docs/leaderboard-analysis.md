@@ -1323,3 +1323,61 @@ target: 195 grazed truths, 150 near-miss false positives, and SQ 0.684 on the 84
 matches already made. exp_010 attacks it at the source, and training at 2048
 should also raise confidence on the small filaments the 1280 model rates at 0.14,
 which is the ranking lever reached from the other side.
+
+## Why the polygon offset needs `mask_ratio=1` to take effect at all
+
+These two changes look independent and are not. Ultralytics builds the target
+masks at `imgsz / mask_ratio`, and computes the mask loss at that resolution by
+bilinearly upsampling the prototypes to meet the target:
+
+```python
+if tuple(masks.shape[-2:]) != (mask_h, mask_w):
+    proto = F.interpolate(proto, masks.shape[-2:], mode="bilinear", align_corners=False)
+```
+
+At the default `mask_ratio=4` and `imgsz=2048`, the loss is computed on a 512
+grid. **A half-pixel correction at 2048 is an eighth of a pixel at 512** — far
+below the grid the loss can represent, so the offset would be almost entirely
+discarded before the model ever saw it. The same is true of the error the
+correction targets: 64% of the disagreement is within two pixels at 2048, which
+is half a pixel at 512.
+
+There is a real cost. The boundary's share of an object's pixels falls with
+resolution: a 1275-pixel filament with a 200-pixel perimeter has 15.7% of its
+mask on the rim at 2048, against 62% at 512. Full-resolution supervision
+therefore *down-weights* the boundary relative to the interior by about four
+times.
+
+It is still the right trade, because the comparison is not "less weight" against
+"more weight" but against "not representable". At 512 the boundary error is
+below the grid and contributes nothing to the gradient; at 2048 it contributes
+less per pixel but exists. The down-weighting is separately fixable later by
+weighting the mask loss near the target boundary, which is the natural follow-up
+if this run underdelivers.
+
+`mask_ratio=1` also removes a train/test mismatch in its own right. The mask is
+optimised for a decision on a 512 grid and then deployed with `retina_masks` at
+2048, upsampled bilinearly — exactly the operation the loss now includes.
+
+## Distribution shift does not explain the validation-to-leaderboard gap
+
+Both submissions with a measured validation score show the same offset: 0.4064
+against a public 0.33, and 0.4404 against 0.36. Two gaps of 0.078. Comparing the
+707 training photographs with the 180 test photographs by filename:
+
+| year | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| train | 12.2% | 13.0% | 14.3% | 14.4% | 12.2% | 11.3% | 10.0% | 3.7% | 2.0% | 1.3% | 4.0% | 1.7% |
+| test | 13.3% | 12.8% | 12.8% | 12.2% | 9.4% | 12.2% | 10.6% | 2.2% | 1.1% | 1.7% | 7.8% | 3.9% |
+
+By GONG station the two agree to within three points on every one of the six.
+The only notable deviation is 2021-2022, where test carries about twice the
+share — of 21 photographs. This is an i.i.d. split, and the dip through
+2018-2020 is the solar minimum showing up in both halves alike.
+
+So the gap is not covariate shift. The remaining structural candidate is the
+weighting: validation averages over 180 annotation *records* drawn from 106
+photographs, because 47 were labelled two or three times and each labelling is
+its own record, while the test set is 180 photographs scored once each. A
+photograph two experts both chose to label is plausibly one with clear
+filaments, and it enters the validation average two or three times.

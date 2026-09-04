@@ -1410,3 +1410,79 @@ several points of sampling noise on its own.
 0.46 maps to a validation 0.54 if the offset is exactly 0.078 and exactly
 constant. Neither is established, so the target for exp_010 is a validation PQ
 of 0.56.
+
+## exp_012 — the refiner on real pairs learns the identity function (negative result)
+
+exp_008's refiner was trained on synthetic damage and lost 0.008 PQ to a
+one-pixel erosion. The diagnosis was calibration: the synthetic corruption sat at
+IoU 0.7258 while real detector output sits at 0.6105, and the severity had been
+matched against SQ 0.679 — a mean over *already-matched* pairs, and so a biased
+statistic for the purpose. exp_011 harvested 3429 real detector-versus-truth
+pairs to remove that objection.
+
+Retrained on them, on TPU, 600 epochs allowed:
+
+| epoch | train loss | val loss | val IoU |
+|---|---|---|---|
+| 1 | 0.4562 | 0.3250 | 0.6108 |
+| **2** | 0.2748 | 0.2531 | **0.6335** |
+| 4 | 0.2618 | 0.2523 | 0.6339 |
+| 99 (best loss) | 0.2127 | 0.2216 | 0.6267 |
+| 139 (early stop) | 0.1988 | 0.2376 | 0.5936 |
+
+**The input it was given is at IoU 0.6105.** It reaches 0.6335 at epoch two, never
+beats that, and the checkpoint selected on validation loss is at 0.6267 — below
+epoch two. Training loss falls from 0.27 to 0.20 across 137 epochs while
+validation IoU does not move: it is memorising the training crops and has learned
+the identity function plus noise on everything else.
+
+That is a stronger negative than the first attempt. exp_008 learned its task
+beautifully — 0.7208 to 0.8529 — and then lost PQ, which left open the reading
+that the task was wrong. This one has the right task, on real errors, and there
+is nothing in it to learn. Given the image and the coarse mask on a 256-pixel
+native-resolution crop, the detector's boundary error is not predictable.
+
+**Second-stage mask refinement is finished, from both directions.** What remains
+is to fix the detector.
+
+### Why that is unsurprising, and what it implies about the SQ ceiling
+
+Placing the detector against the human numbers already measured:
+
+| | PQ | SQ | RQ |
+|---|---|---|---|
+| annotator vs annotator | 0.3361 | 0.6348 | 0.5296 |
+| **this detector** | **0.4404** | **0.6843** | **0.6436** |
+
+**The model already draws boundaries in closer agreement with an annotator than a
+second annotator does**, and matches instances far more reliably. A refiner asked
+to improve on that has to predict which way *this particular* annotator resolved
+an ambiguity, and there is no signal for that in the crop.
+
+It also bounds the oracle. The +0.203 for perfect masks assumes SQ can reach 1.0
+against a single annotator, which is not attainable when two annotators reach
+0.635 with each other. Treating each annotator as a noisy draw around a latent
+boundary, a pairwise disagreement of 0.365 of the union implies roughly half that
+per annotator, so **a model predicting the latent truth exactly would score about
+SQ 0.82** against any one of them. The rim analysis independently put perfect
+boundaries at SQ 0.855, which is the same number within the crudeness of both
+estimates.
+
+So the honest mask lever is SQ 0.684 -> 0.82, not -> 1.0. At the current RQ that
+is PQ 0.528, and with the recall that a detector trained at the inference
+resolution should also bring, validation in the mid 0.5s remains the right
+target. It just has to come from the detector.
+
+## exp_015 — the CPU submission path is bit-for-bit the GPU one
+
+Dry run of the split-out submission kernel against the current checkpoint, so
+that a failure there could not be discovered after thirty hours of training.
+
+It reproduced PQ **0.4403668270817509** on validation, selected conf 0.35 /
+min_area 300 / grow -1 unaided, and wrote 1238 rows over 180 test images with the
+no-overlap check passing. The resulting CSV has the same MD5 as the one exp_005
+produced on a T4 and submitted for the current best public score of 0.36.
+
+Inference on CPU is therefore not an approximation of the GPU path but the same
+computation, and every GPU hour can go to training. Ninety minutes of free CPU
+buys what would otherwise be twenty minutes of the scarce resource.

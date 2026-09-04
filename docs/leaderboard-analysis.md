@@ -1539,3 +1539,44 @@ idea that is not simply a fourth corrector, since it would supply independent
 evidence rather than a learned correction of YOLO's error. It is recorded here
 rather than built: three consecutive failures of post-detector correction are a
 pattern, and free compute is not a reason to add a fourth.
+
+## exp_017 — sub-pixel trimming is possible after all, and buys nothing (negative result)
+
+The erosion analysis concluded that a sub-pixel inward correction is impossible
+because the distance transform is quantised. That reasoning was wrong in
+mechanism: it holds for morphology on a binary mask, and the mask is binarised
+from a continuous field. Ultralytics cuts the prototype field at logit zero, and
+that cut is a free parameter — raising it moves each boundary inward by a
+distance set by that instance's own local gradient, continuously and
+per-instance.
+
+Fourteen cuts from -0.4 to 2.0, crossed with confidence and with the one-pixel
+erosion, over the validation set. The run reproduces the shipped configuration at
+PQ **0.4403668270817509**, so the candidate pool is the right one.
+
+| logit cut | erosion | PQ | SQ | RQ |
+|---|---|---|---|---|
+| 0.00 | none | 0.4169 | 0.6708 | 0.6214 |
+| 0.40 | none | 0.4300 | 0.6764 | 0.6357 |
+| **0.90** | **none** | **0.4352** | 0.6787 | 0.6412 |
+| **0.00** | **-1px** | **0.4404** | 0.6843 | 0.6436 |
+| 0.30 | -1px | 0.4373 | 0.6809 | 0.6423 |
+| 0.90 | -1px | *worse still* | | |
+
+**The mechanism works and the instrument does not.** Cutting higher on the field,
+with no morphology at all, recovers +0.018 of the +0.023 that the whole-pixel
+erosion recovers — so it is a genuine sub-pixel trim, doing most of the same job.
+It is simply not a better one. And the two do not stack: they perform the same
+correction, so combining them over-trims, and the best of all 84 rows is the
+shipped configuration unchanged.
+
+The instructive part is *why* a continuous, per-instance trim fails to beat a
+quantised global one. A fixed logit offset gives a variable trim, because the
+field's gradient at the boundary differs per instance — but that variation turns
+out not to correlate with how much each mask actually needs trimming. **The
+fatness is not predictable from the field**, which is the same thing exp_018
+found from a different direction: the refiner could not predict the boundary
+error either, given strictly more information.
+
+Two independent methods have now failed to predict per-instance boundary error.
+That is no longer a fact about either method.

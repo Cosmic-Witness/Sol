@@ -1241,3 +1241,85 @@ From the oracle table, taking SQ from 0.684 to 0.75 while carrying two thirds of
 the 150 near misses over the matching threshold gives 0.528. Adding any part of
 the orphan class reaches 0.54. Neither number is out of reach for the two
 corrections above, and neither is guaranteed by them.
+
+## exp_014 — the phantom filaments are the label noise floor
+
+The orphan class — instances one side does not acknowledge exist at all — is 49%
+of false positives and 59% of false negatives, and nothing in the plan touches
+it. But "does not acknowledge" is measured against one annotator, and 47 of the
+106 validation photographs carry two or three independent annotations. That
+makes the same statistic available for one human against another.
+
+`experiments/exp_014_annotator/src/irreducible.py`, at the shipped operating
+point, counting an instance as orphaned when nothing on the other side overlaps
+it by even IoU 0.10:
+
+| | orphaned | of | rate |
+|---|---|---|---|
+| annotator instances, by the detector | 299 | 1325 | **22.6%** |
+| annotator instances, by another annotator | 255 | 1315 | **19.4%** |
+| detector predictions, by the annotator | 258 | 1301 | 19.8% |
+
+**The detector denies a filament exists at 22.6%, where a second human expert
+denies it at 19.4%.** Three points apart. On the reverse direction the detector
+is at 19.8% against the human 19.4% — indistinguishable.
+
+Two direct confirmations on the multiply-annotated subset: **87 predictions
+orphaned by the reference annotator were drawn by a different annotator** — real
+filaments this reference simply did not mark — and **75 missed truths were drawn
+by no other annotator either**, labels only one person believed in.
+
+The orphan class is therefore not a detector failure and is very largely
+unrecoverable. Of the 299 orphaned truths, roughly 257 are at the rate a human
+would also miss, leaving about 42 genuinely attributable to the model. The
++0.048 oracle for deleting orphan false positives, and most of the +0.099 for
+deleting false negatives, are oracles over label noise. They should not be
+chased.
+
+## exp_016 — the misses are seen and disbelieved, not unseen
+
+The complementary question: the orphan count is measured over predictions that
+survived confidence 0.35, but the cached pool runs down to 0.05. Does the
+detector propose something at the missed locations and rank it too low?
+
+`experiments/exp_013_errors/src/recall_ceiling.py`, over 1325 validation truths
+and a pool averaging 23.4 candidates per photograph:
+
+| | count | share |
+|---|---|---|
+| some candidate in the pool matches it at IoU 0.5 | 1102 | **83.2%** |
+| ...and that candidate is already above confidence 0.35 | 797 | 72.3% of those |
+| pool only grazes it, never reaching IoU 0.5 | 195 | 14.7% |
+| nothing in the pool touches it at all | 28 | **2.1%** |
+
+**Only 2.1% of the ground truth is invisible to this detector.** The pool's
+recall ceiling is 0.832 against a realised recall of 845/1325 = 0.638.
+
+That splits the recoverable error cleanly in two:
+
+- **305 truths have a covering candidate that confidence discards** (median
+  confidence of a covering candidate is 0.545, but the tenth percentile is
+  0.142). This is a ranking failure.
+- **195 truths are proposed but the mask is too wrong to match.** This is mask
+  quality, and it is the same lever as the 150 near-miss false positives.
+
+### What a re-ranker would have to achieve
+
+Promoting *k* correct candidates and *m* incorrect ones from the low-confidence
+band moves PQ to `(578.2 + 0.65k) / (1313 + 0.5k + 0.5m)`. A promotion that is
+right earns a true positive and cancels a false negative; one that is wrong costs
+half a false positive.
+
+**Break-even is two wrong per one right — precision above 33%.** The base rate in
+the 0.05-0.35 band is about 10.5%, so a re-ranker must be three times better than
+chance on whatever subset it selects. exp_005's gradient-boosted model over four
+geometric features could not do it. A classifier that sees the image crop might;
+it is the same shape of problem as the refiner, on the same infrastructure.
+
+### Where this leaves the allocation
+
+Unchanged, and better justified. Mask quality is the one lever with a clean
+target: 195 grazed truths, 150 near-miss false positives, and SQ 0.684 on the 845
+matches already made. exp_010 attacks it at the source, and training at 2048
+should also raise confidence on the small filaments the 1280 model rates at 0.14,
+which is the ranking lever reached from the other side.

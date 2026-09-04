@@ -1381,3 +1381,32 @@ photographs, because 47 were labelled two or three times and each labelling is
 its own record, while the test set is 180 photographs scored once each. A
 photograph two experts both chose to label is plausibly one with clear
 filaments, and it enters the validation average two or three times.
+
+### And neither does the weighting (negative result)
+
+Measured directly (`experiments/exp_013_errors/src/multiplicity.py`), splitting
+validation by how many people annotated each photograph:
+
+| | PQ | SQ | RQ | records |
+|---|---|---|---|---|
+| singly annotated | 0.4317 | 0.6927 | 0.6232 | 59 |
+| multiply annotated | 0.4454 | 0.6796 | 0.6554 | 121 |
+| **all, as reported** | **0.4404** | 0.6843 | 0.6436 | 180 |
+| pooled per photograph, one vote each | 0.4396 | 0.6875 | 0.6394 | 106 |
+
+Multiply-annotated photographs do score higher, but by 0.014, and re-weighting so
+each photograph counts once — the test set's weighting — moves the headline figure
+by **0.0008**. The hypothesis is dead. (The direction inside it is interesting:
+on singly-annotated photographs the masks are slightly better and fewer
+instances match, so the two components move oppositely and nearly cancel.)
+
+With covariate shift and weighting both excluded, the remaining explanation for
+the 0.078 offset is ordinary generalisation plus the noise of a public
+leaderboard computed on a fraction of the test set. Two submissions is not
+enough to separate them, and a public split of a few dozen photographs carries
+several points of sampling noise on its own.
+
+**The practical consequence is to aim higher than the arithmetic asks.** A public
+0.46 maps to a validation 0.54 if the offset is exactly 0.078 and exactly
+constant. Neither is established, so the target for exp_010 is a validation PQ
+of 0.56.

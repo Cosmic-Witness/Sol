@@ -10,12 +10,23 @@ peak and the model never consolidated.
 
 Two changes fix both.
 
-**Freeze the backbone.** No gradient reaches it, so its activations can be
-released after the forward pass instead of held for the backward one, which is
-the dominant memory term at 2048. That is what buys room for full-resolution
-supervision. It is also the right thing for this fine-tune on its own merits: the
-model is correcting a systematic half-pixel bias in its masks, not relearning
-what a filament looks like, and the decoder is where that correction lives.
+**Freeze the backbone.** Version 1 of this kernel claimed that would buy the
+memory for full-resolution supervision. It did not: the first attempt still sat
+at 13.2 GB and still failed, because the cost is not backbone activations but a
+single 2.34 GB allocation in the loss, where 32 prototypes are upsampled to the
+target grid. The freeze is kept anyway on its own merits -- this fine-tune is
+correcting a systematic half-pixel bias in the masks, not relearning what a
+filament looks like, and the decoder is where that correction lives -- but it is
+not what makes the run fit.
+
+**Fix the allocator, then trade image size for grid size.** The failure was 2.34
+GB wanted against 2.06 GB free, with 984 MB reserved but unallocated: the
+`expandable_segments` setting had been applied after `import torch` had already
+initialised CUDA, so it never took effect. Setting it first may alone close a
+280 MB gap. If it does not, the ladder drops the training resolution rather than
+the supervision resolution, because the loss grid in native pixels is
+`2048 * mask_ratio / imgsz` and 1792 at mask_ratio=1 is 1.14, nearly twice as
+fine as 2048 at mask_ratio=2.
 
 **Size the schedule to the session.** At roughly eight minutes an epoch with the
 backbone frozen, seventy-five epochs fit inside the twelve-hour cap with margin,
@@ -30,6 +41,15 @@ arrive in minutes rather than being buried in a log.
 from __future__ import annotations
 
 import os
+
+# Before anything imports torch. The previous run set this after
+# `torch.cuda.is_available()` had already initialised CUDA, so it did nothing --
+# and the failure reported 984 MB reserved but unallocated, which is exactly what
+# it would have reclaimed. Both spellings, since torch renamed the variable and
+# the version here asks for the new one by name.
+for _name in ("PYTORCH_CUDA_ALLOC_CONF", "PYTORCH_ALLOC_CONF"):
+    os.environ.setdefault(_name, "expandable_segments:True")
+
 import shutil
 import subprocess
 import sys
@@ -85,9 +105,6 @@ def main() -> None:
     run(["git", "log", "--oneline", "-1"])
     os.environ["PYTHONPATH"] = str(REPO_DIR)
     os.environ["YOLO_CONFIG_DIR"] = str(SCRATCH / "ultralytics")
-    # Fragmentation is a plausible part of why exp_010 could not fit full
-    # resolution with 2.8 GB apparently free.
-    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     run([sys.executable, "-m", "experiments.exp_002_yolo_seg.src.prepare_yolo",
          "--annotations", root / "train" / ANNOTATION_NAME,
@@ -96,10 +113,10 @@ def main() -> None:
 
     from ultralytics import YOLO
 
-    def fit(batch: int) -> None:
+    def fit(imgsz: int, batch: int) -> None:
         YOLO(str(seeds[0])).train(
             data=str(DATASET_DIR / "data.yaml"),
-            imgsz=IMGSZ, batch=batch, epochs=EPOCHS, patience=EPOCHS,
+            imgsz=imgsz, batch=batch, epochs=EPOCHS, patience=EPOCHS,
             project=str(RUNS_DIR), name=RUN_NAME, exist_ok=True,
             freeze=FREEZE,
             optimizer="AdamW", lr0=5e-4, lrf=0.01, cos_lr=True, warmup_epochs=2.0,
@@ -109,24 +126,32 @@ def main() -> None:
             cache=False, workers=2, seed=2026, verbose=True, plots=False,
         )
 
-    for batch in (2, 1):
+    # What matters is the loss grid measured in native pixels, which is
+    # `2048 * mask_ratio / imgsz`. The polygon correction is half a native pixel,
+    # so it is representable at 1.0 and roughly so at 1.14, and invisible at 2.0.
+    # The ladder therefore gives up training resolution before it gives up
+    # supervision resolution -- 1792 with mask_ratio=1 has a finer loss grid than
+    # 2048 with mask_ratio=2, and costs only a 1.14x train/test mismatch against
+    # the 1.6x exp_002 lived with.
+    for imgsz, batch, grid in ((2048, 2, 1.00), (2048, 1, 1.00), (1792, 2, 1.14)):
         try:
-            print(f"\nattempting mask_ratio=1 at batch {batch}", flush=True)
-            fit(batch)
+            print(f"\nattempting mask_ratio=1 at imgsz {imgsz} batch {batch} "
+                  f"(loss grid {grid:.2f} native px)", flush=True)
+            fit(imgsz, batch)
             break
         except (RuntimeError, torch.cuda.OutOfMemoryError) as exc:
             if "out of memory" not in str(exc).lower():
                 raise
-            print(f"batch {batch} did not fit: {exc}", flush=True)
+            print(f"imgsz {imgsz} batch {batch} did not fit: {exc}", flush=True)
             torch.cuda.empty_cache()
             shutil.rmtree(RUNS_DIR / RUN_NAME, ignore_errors=True)
     else:
-        # Deliberately not falling back to mask_ratio=2. That is what exp_010
-        # did, and it spent twelve hours measuring a configuration whose central
-        # change was inert.
+        # Deliberately never mask_ratio=2. That is what exp_010 fell back to, and
+        # it spent twelve hours measuring a configuration whose central change
+        # was inert on the loss grid.
         raise SystemExit(
-            "full-resolution mask supervision does not fit even with the backbone "
-            "frozen at batch 1. That is the result; do not retry at mask_ratio=2.")
+            "full-resolution mask supervision does not fit at any resolution "
+            "tried. That is the result; do not retry at mask_ratio=2.")
 
     print("\nDONE.", flush=True)
 

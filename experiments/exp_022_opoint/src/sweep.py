@@ -82,31 +82,67 @@ def main() -> None:
     truths = {iid: gt_masks(anns) for iid, _, anns in records}
 
     results = []
-    print(f"{'conf':>6}{'area':>7}{'grow':>6}{'PQ':>9}{'SQ':>8}{'RQ':>8}"
-          f"{'TP':>6}{'FP':>6}{'FN':>6}", flush=True)
+    header = (f"{'conf':>6}{'area':>7}{'grow':>6}{'PQ':>9}{'SQ':>8}{'RQ':>8}"
+              f"{'TP':>6}{'FP':>6}{'FN':>6}")
 
+    grown_cache: dict[int, dict] = {}
+
+    def grown_for(grow: int) -> dict:
+        if grow not in grown_cache:
+            grown_cache[grow] = {stem: [(s, morph(m, grow)) for s, m in v]
+                                 for stem, v in decoded.items()}
+        return grown_cache[grow]
+
+    def score(conf: float, min_area: int, grow: int) -> dict:
+        grown = grown_for(grow)
+        rows = []
+        for iid, stem, _ in records:
+            candidates = [(s, m) for s, m in grown.get(stem, []) if s >= conf]
+            painted = (paint_panoptic(candidates, min_area=min_area)
+                       if candidates else [])
+            rows.append(compute_pq([m for _, m, _ in painted], truths[iid]))
+        row = aggregate_pq(rows)
+        row.update({"conf": conf, "min_area": min_area, "grow": grow})
+        results.append(row)
+        print(f"{conf:6.2f}{min_area:7d}{grow:6d}{row['pq']:9.4f}"
+              f"{row['sq']:8.4f}{row['rq']:8.4f}"
+              f"{row['tp']:6d}{row['fp']:6d}{row['fn']:6d}", flush=True)
+        return row
+
+    # Coarse first, then refine around its winner. A full product of every
+    # candidate value is 120 evaluations of 180 records each and takes hours; the
+    # surface is smooth enough that two passes find the same optimum in a
+    # fraction of that, and the boundary check below still catches a grid that
+    # stopped too early.
+    print("\n== coarse ==\n" + header, flush=True)
     for grow in (-1, 0, 1, 2):
-        grown = {stem: [(s, morph(m, grow)) for s, m in v]
-                 for stem, v in decoded.items()}
-        for conf in (0.10, 0.15, 0.20, 0.25, 0.30, 0.35):
-            for min_area in (150, 200, 250, 300, 400):
-                rows = []
-                for iid, stem, _ in records:
-                    candidates = [(s, m) for s, m in grown.get(stem, []) if s >= conf]
-                    painted = (paint_panoptic(candidates, min_area=min_area)
-                               if candidates else [])
-                    rows.append(compute_pq([m for _, m, _ in painted], truths[iid]))
-                row = aggregate_pq(rows)
-                row.update({"conf": conf, "min_area": min_area, "grow": grow})
-                results.append(row)
-                print(f"{conf:6.2f}{min_area:7d}{grow:6d}{row['pq']:9.4f}"
-                      f"{row['sq']:8.4f}{row['rq']:8.4f}"
-                      f"{row['tp']:6d}{row['fp']:6d}{row['fn']:6d}", flush=True)
+        for conf in (0.15, 0.25, 0.35):
+            for min_area in (200, 300):
+                score(conf, min_area, grow)
+
+    coarse = max(results, key=lambda r: r["pq"])
+    print(f"\ncoarse winner: conf {coarse['conf']} area {coarse['min_area']} "
+          f"grow {coarse['grow']} PQ {coarse['pq']:.4f}", flush=True)
+
+    confs = sorted({round(max(0.05, coarse["conf"] + d), 2)
+                    for d in (-0.05, 0.0, 0.05)})
+    areas = sorted({max(100, coarse["min_area"] + d) for d in (-100, -50, 0, 50, 100)})
+    grows = sorted({coarse["grow"] + d for d in (-1, 0, 1)})
+    print("\n== refine ==\n" + header, flush=True)
+    seen = {(r["conf"], r["min_area"], r["grow"]) for r in results}
+    for grow in grows:
+        for conf in confs:
+            for min_area in areas:
+                if (conf, min_area, grow) not in seen:
+                    score(conf, min_area, grow)
 
     best = max(results, key=lambda r: r["pq"])
-    interior = (best["conf"] not in (0.10, 0.35)
-                and best["min_area"] not in (150, 400)
-                and best["grow"] not in (-1, 2))
+    tested_conf = sorted({r["conf"] for r in results})
+    tested_area = sorted({r["min_area"] for r in results})
+    tested_grow = sorted({r["grow"] for r in results})
+    interior = (best["conf"] not in (tested_conf[0], tested_conf[-1])
+                and best["min_area"] not in (tested_area[0], tested_area[-1])
+                and best["grow"] not in (tested_grow[0], tested_grow[-1]))
     print(f"\nbest: {json.dumps(best, indent=2)}")
     print(f"optimum is {'interior' if interior else 'ON THE BOUNDARY -- widen again'}",
           flush=True)

@@ -1,0 +1,15 @@
+{
+  "id": "cosmicwitness/sol-exp022-opoint",
+  "title": "sol exp022 opoint",
+  "code_file": "sweep_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": ["cosmicwitness/sol-exp015-submit"],
+  "model_sources": []
+}

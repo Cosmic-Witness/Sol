@@ -1,0 +1,33 @@
+{
+  "photographs": 106,
+  "multiply_annotated": 47,
+  "detector_predictions_orphaned_by_the_annotator": {
+    "count": 258,
+    "of": 1301,
+    "rate": 0.19830899308224442
+  },
+  "annotator_instances_orphaned_by_the_detector": {
+    "count": 299,
+    "of": 1325,
+    "rate": 0.22566037735849057
+  },
+  "annotator_instances_orphaned_by_another_annotator": {
+    "count": 255,
+    "of": 1315,
+    "rate": 0.19391634980988592
+  },
+  "orphaned_predictions_that_another_annotator_drew": 87,
+  "orphaned_truths_that_no_other_annotator_drew": 75,
+  "raw": {
+    "pred_orphans": 258,
+    "pred_total": 1301,
+    "truth_orphans": 299,
+    "truth_total": 1325,
+    "human_orphans": 255,
+    "human_total": 1315,
+    "pred_orphans_rescued": 87,
+    "truth_orphans_rescued": 75,
+    "photographs": 106,
+    "multi_photographs": 47
+  }
+}

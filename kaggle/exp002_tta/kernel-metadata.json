@@ -1,12 +1,11 @@
 {
-  "id": "cosmicwitness/sol-exp001-baseline",
-  "title": "Sol exp001 baseline",
-  "code_file": "exp001_kaggle.py",
+  "id": "cosmicwitness/sol-exp002-tta",
+  "title": "sol exp002 tta",
+  "code_file": "tta_kernel.py",
   "language": "python",
   "kernel_type": "script",
   "is_private": true,
-  "enable_gpu": true,
-  "machine_shape": "NvidiaTeslaT4",
+  "enable_gpu": false,
   "enable_tpu": false,
   "enable_internet": true,
   "dataset_sources": [],
@@ -14,6 +13,7 @@
     "filament-segmentation-2026"
   ],
   "kernel_sources": [
-    "cosmicwitness/sol-cache-builder"
-  ]
+    "cosmicwitness/sol-exp002-yolo-seg"
+  ],
+  "model_sources": []
 }

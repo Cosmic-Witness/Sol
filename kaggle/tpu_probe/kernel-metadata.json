@@ -1,0 +1,16 @@
+{
+  "id": "cosmicwitness/sol-tpu-probe",
+  "title": "sol tpu probe",
+  "code_file": "tpu_probe.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": true,
+  "machine_shape": "Tpu1VmV38",
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

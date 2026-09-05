@@ -1,7 +1,7 @@
 {
-  "id": "cosmicwitness/sol-exp001-baseline",
-  "title": "Sol exp001 baseline",
-  "code_file": "exp001_kaggle.py",
+  "id": "cosmicwitness/sol-exp002-tune",
+  "title": "Sol exp002 tune",
+  "code_file": "tune_kernel.py",
   "language": "python",
   "kernel_type": "script",
   "is_private": true,
@@ -14,6 +14,7 @@
     "filament-segmentation-2026"
   ],
   "kernel_sources": [
-    "cosmicwitness/sol-cache-builder"
-  ]
+    "cosmicwitness/sol-exp002-yolo-seg"
+  ],
+  "model_sources": []
 }

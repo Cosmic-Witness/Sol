@@ -1,0 +1,17 @@
+{
+  "id": "cosmicwitness/sol-selfref-probe",
+  "title": "sol selfref probe",
+  "code_file": "probe.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": false,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "cosmicwitness/sol-selfref-probe"
+  ],
+  "model_sources": []
+}

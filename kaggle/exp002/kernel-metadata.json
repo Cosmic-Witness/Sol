@@ -1,7 +1,7 @@
 {
-  "id": "cosmicwitness/sol-exp001-baseline",
-  "title": "Sol exp001 baseline",
-  "code_file": "exp001_kaggle.py",
+  "id": "cosmicwitness/sol-exp002-yolo-seg",
+  "title": "Sol exp002 yolo seg",
+  "code_file": "exp002_kaggle.py",
   "language": "python",
   "kernel_type": "script",
   "is_private": true,
@@ -13,7 +13,6 @@
   "competition_sources": [
     "filament-segmentation-2026"
   ],
-  "kernel_sources": [
-    "cosmicwitness/sol-cache-builder"
-  ]
+  "kernel_sources": [],
+  "model_sources": []
 }

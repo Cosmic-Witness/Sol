@@ -111,47 +111,39 @@ def main() -> None:
          "--images", root / "train" / "train_images",
          "--output", DATASET_DIR])
 
-    from ultralytics import YOLO
-
-    def fit(imgsz: int, batch: int) -> None:
-        YOLO(str(seeds[0])).train(
-            data=str(DATASET_DIR / "data.yaml"),
-            imgsz=imgsz, batch=batch, epochs=EPOCHS, patience=EPOCHS,
-            project=str(RUNS_DIR), name=RUN_NAME, exist_ok=True,
-            freeze=FREEZE,
-            optimizer="AdamW", lr0=5e-4, lrf=0.01, cos_lr=True, warmup_epochs=2.0,
-            mask_ratio=1, overlap_mask=True,
-            hsv_h=0.0, hsv_s=0.0, hsv_v=0.3,
-            fliplr=0.5, flipud=0.5, degrees=15.0, mosaic=0.0,
-            cache=False, workers=2, seed=2026, verbose=True, plots=False,
-        )
-
-    # What matters is the loss grid measured in native pixels, which is
-    # `2048 * mask_ratio / imgsz`. The polygon correction is half a native pixel,
-    # so it is representable at 1.0 and roughly so at 1.14, and invisible at 2.0.
-    # The ladder therefore gives up training resolution before it gives up
-    # supervision resolution -- 1792 with mask_ratio=1 has a finer loss grid than
-    # 2048 with mask_ratio=2, and costs only a 1.14x train/test mismatch against
-    # the 1.6x exp_002 lived with.
-    for imgsz, batch, grid in ((2048, 2, 1.00), (2048, 1, 1.00), (1792, 2, 1.14)):
-        try:
-            print(f"\nattempting mask_ratio=1 at imgsz {imgsz} batch {batch} "
-                  f"(loss grid {grid:.2f} native px)", flush=True)
-            fit(imgsz, batch)
+    # Each attempt in its own process. Version 2 looped inside one process and
+    # two rungs reported byte-identical out-of-memory errors while the batch
+    # between them halved -- the second never ran, because empty_cache() cannot
+    # reclaim what the previous trainer still references. Rung 3 was then
+    # measured against a heap polluted by both.
+    #
+    # What matters is the loss grid in native pixels, `2048 * mask_ratio /
+    # imgsz`: the polygon correction is half a native pixel, representable at
+    # 1.00, roughly so at 1.14, invisible at 2.00. So the ladder gives up
+    # training resolution before supervision resolution, and never reaches
+    # mask_ratio=2 at all.
+    attempts = ((2048, 2, 1.00), (2048, 1, 1.00), (1792, 2, 1.14), (1792, 1, 1.14))
+    for imgsz, batch, grid in attempts:
+        print(f"\n=== attempting imgsz {imgsz} batch {batch} "
+              f"(loss grid {grid:.2f} native px) ===", flush=True)
+        shutil.rmtree(RUNS_DIR / RUN_NAME, ignore_errors=True)
+        result = subprocess.run([
+            sys.executable, "-m", "experiments.exp_031_frozen.src.train",
+            "--data", str(DATASET_DIR / "data.yaml"),
+            "--weights", str(seeds[0]),
+            "--project", str(RUNS_DIR), "--name", RUN_NAME,
+            "--imgsz", str(imgsz), "--batch", str(batch),
+            "--epochs", str(EPOCHS), "--freeze", str(FREEZE),
+        ])
+        if result.returncode == 0:
+            print(f"\ntrained at imgsz {imgsz} batch {batch}", flush=True)
             break
-        except (RuntimeError, torch.cuda.OutOfMemoryError) as exc:
-            if "out of memory" not in str(exc).lower():
-                raise
-            print(f"imgsz {imgsz} batch {batch} did not fit: {exc}", flush=True)
-            torch.cuda.empty_cache()
-            shutil.rmtree(RUNS_DIR / RUN_NAME, ignore_errors=True)
+        print(f"imgsz {imgsz} batch {batch} failed with {result.returncode}", flush=True)
     else:
-        # Deliberately never mask_ratio=2. That is what exp_010 fell back to, and
-        # it spent twelve hours measuring a configuration whose central change
-        # was inert on the loss grid.
         raise SystemExit(
             "full-resolution mask supervision does not fit at any resolution "
-            "tried. That is the result; do not retry at mask_ratio=2.")
+            "tried, each in a clean process. That is the result; do not retry "
+            "at mask_ratio=2.")
 
     print("\nDONE.", flush=True)
 

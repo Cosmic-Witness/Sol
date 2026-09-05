@@ -47,7 +47,10 @@ def main() -> None:
         raise SystemExit("competition data not attached")
     root = matches[0].parent.parent
 
-    weights = sorted(Path("/kaggle/input").rglob("runs/*/weights/best.pt"))
+    # Kaggle strips the top directory when it unpacks an uploaded archive, so
+    # runs/polygon/weights arrives as polygon/weights. Match on the weights
+    # directory rather than on any path above it.
+    weights = sorted(Path("/kaggle/input").rglob("weights/best.pt"))
     if not weights:
         weights = sorted(Path("/kaggle/input").rglob("checkpoints/best.pt"))
     if not weights:

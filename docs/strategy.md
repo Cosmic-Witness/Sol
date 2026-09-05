@@ -215,3 +215,62 @@ candidates at a 10.5% base rate.
 
 That leaves no secondary lever. Every route that does not retrain the detector
 has now been measured and closed.
+
+---
+
+## Correction, and the direction it opens (2026-09-05)
+
+Section 2 above claimed that half the remaining error is label noise and is
+therefore unreachable. **That was right about false positives and wrong about
+misses**, and the difference matters more than anything else measured so far.
+
+exp_014 established that the detector proposes filaments the annotator did not
+mark at 19.8%, against 19.4% for a second human expert. That holds: the false
+positives are at the human disagreement rate and cannot be removed.
+
+The error was extending it to the other side. exp_016 measured that at a 0.05
+confidence floor **only 2.1% of ground truth is invisible to the detector**, and
+83.2% is covered by some candidate at IoU 0.5. A miss is therefore almost never
+the detector failing to see a filament; it is the detector seeing one and ranking
+it below the emission threshold. That is a ranking problem, and ranking problems
+are not noise.
+
+### What that is worth
+
+A perfect re-ranker keeping exactly the covered truths and nothing else scores
+
+    SQ 0.68 x 1102/(1102 + 0.5 x 223) = 0.6175 local, about 0.55 public
+
+which is precisely where the leaderboard's top cluster sits. That is not proof
+they are doing this, but it does mean the recall required for 0.55 is already
+present in the candidates this detector emits, and no new architecture is needed
+to reach it.
+
+Realistically, promoting the 305 truths that a covering candidate exists for:
+
+| verifier precision | local PQ | public |
+|---|---|---|
+| 100% | 0.5298 | ~0.46 |
+| 80% | 0.5164 | ~0.45 |
+| 60% | 0.4954 | ~0.43 |
+| 50% | 0.4799 | ~0.41 |
+
+Break-even is 33%, which exp_019's re-ranker could not clear.
+
+### Why a crop classifier is a different bet from exp_019
+
+exp_019 ranked candidates from fifteen numbers: a fourteen-cut profile of how the
+mask field falls away, plus confidence. It genuinely added information — average
+precision 0.7248 against raw confidence's 0.7150 — and still could not promote,
+because a diffuse improvement in ordering does not separate 305 truths from 1700
+candidates at a 10.5% base rate.
+
+A classifier that sees the image crop is asking a different question and has
+strictly more to work with. It is also a much easier task than the one the
+refiners failed at: they had to regress where a boundary lies, which exp_017 and
+exp_018 independently showed is not predictable; this only has to decide whether
+a filament is there, which is what the annotators themselves were doing.
+
+The harness exists — exp_011 harvests crops, exp_012 trains on TPU, and the TPU
+is idle and costs no GPU quota. Labels come free from the cached candidate sets:
+a candidate is positive when it matches a truth at IoU above 0.5.

@@ -1,0 +1,15 @@
+{
+  "id": "cosmicwitness/sol-exp025-verifier-harvest",
+  "title": "sol exp025 verifier harvest",
+  "code_file": "harvest_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["cosmicwitness/sol-exp010-session1"],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": [],
+  "model_sources": []
+}

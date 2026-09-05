@@ -1751,3 +1751,47 @@ and reaching it needs three things this session could not supply:
    The routes to it are a smaller backbone or two T4s splitting the batch.
 3. **Enough epochs to converge**, which at 11.5 minutes each is the same
    constraint as the first.
+
+## exp_024 — the resolution peak is the native frame, not a multiple of the training size
+
+exp_002 trained at 1280 and peaked at inference 2048, with 2560 and 3072
+degrading. The explanation recorded at the time was that the anchor-free head
+responds over a range of object sizes fixed at training time — which, if true,
+would mean the table said nothing about a model trained at 2048, and that
+exp_010's peak should sit near 1.6 times its own training size.
+
+Measured on exp_010, each resolution at its own best confidence and erosion:
+
+| imgsz | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|
+| 1792 | 0.4180 | 0.6777 | 0.6168 | 788 | 442 | 537 |
+| **2048** | **0.4274** | 0.6776 | 0.6307 | 766 | 338 | 559 |
+| 2304 | 0.4264 | 0.6746 | 0.6322 | 813 | 434 | 512 |
+| 2560 | 0.4088 | 0.6736 | 0.6069 | 816 | 548 | 509 |
+| 3072 | 0.3583 | 0.6715 | 0.5336 | 738 | 703 | 587 |
+
+**2048 again, for a model trained at 2048.** The prediction was wrong and the
+correct reading is simpler than the one it replaced: the peak is the *native
+frame*. 2048 is where every recorded pixel is, and upsampling past it invents
+detail rather than revealing it. exp_002 peaked at 2048 because that is the
+native size, not because 2048 is 1.6 times 1280 — a coincidence the earlier
+explanation mistook for a mechanism.
+
+2304 is inside the noise at 0.4264, and interestingly buys 47 true positives for
+96 false ones, so the extra scale does surface real filaments; it just surfaces
+more phantoms alongside them.
+
+## exp_023 — the fusion scores 0.36 in public, as its margin predicted
+
+Submitted with exp_002's masks and exp_010 as a veto. Public **0.36**, the same
+as either model alone. A validation margin of 0.0007 predicted exactly this, and
+the leaderboard confirms the ensemble is dead rather than merely unpromising.
+
+One process note, because the first attempt would have submitted the wrong thing:
+the validation sweep checked agreement against exp_010's *full cached pool* at a
+0.05 confidence floor, and the first submission kernel ran exp_010 at 0.30. That
+shrank the confirmation set, vetoed 312 candidates instead of a handful, and
+emitted 979 instances against the baseline's 1238. The row count is what caught
+it — the measured rule drops 8 of 1301 on validation, so a 21% drop could not be
+the same rule. Corrected, it emits 1229, and 9 fewer than baseline is the
+expected figure.

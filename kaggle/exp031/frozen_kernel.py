@@ -122,7 +122,13 @@ def main() -> None:
     # 1.00, roughly so at 1.14, invisible at 2.00. So the ladder gives up
     # training resolution before supervision resolution, and never reaches
     # mask_ratio=2 at all.
-    attempts = ((2048, 2, 1.00), (2048, 1, 1.00), (1792, 2, 1.14), (1792, 1, 1.14))
+    # Measured, in clean processes: the failing allocation is independent of
+    # batch size (halving it changed 3.11 GiB by nothing) and linear in image
+    # size (2048 -> 1792 moved it 3.11 -> 2.75, a factor of 0.88 against 0.875).
+    # So batch is not a lever here and imgsz is the only supported one. Each rung
+    # coarsens the loss grid; even the last is finer than the mask_ratio=2 that
+    # made exp_010's central change inert at 2.00.
+    attempts = ((2048, 2, 1.00), (1792, 2, 1.14), (1536, 2, 1.33), (1280, 4, 1.60))
     for imgsz, batch, grid in attempts:
         print(f"\n=== attempting imgsz {imgsz} batch {batch} "
               f"(loss grid {grid:.2f} native px) ===", flush=True)

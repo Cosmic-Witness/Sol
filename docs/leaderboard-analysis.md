@@ -1917,3 +1917,54 @@ Two consequences. The label-noise ceiling is real rather than an artefact of how
 this project split its data. And a public 0.46 requires a validation PQ near
 0.53, with no shortcut through the metric available: every point has to be earned
 on masks the reference annotator actually drew.
+
+## exp_029 — the boundary is not in the pixels (negative result)
+
+The last mechanism available without training. Every previous attempt on SQ was a
+model that had to *predict* the detector's boundary error, and exp_017 and
+exp_018 showed independently that this error is not predictable. Snapping
+predicts nothing: a filament is dark and the disk is bright, so the boundary is
+physically present, and the mask can be pulled onto it by intensity alone.
+
+Validated first on a synthetic case — a fat mask at IoU 0.7986 against a
+filament drawn as a clean step from 60 to 200 — where the intensity snap recovers
+**0.9995**.
+
+On real photographs:
+
+| method | PQ | SQ | RQ |
+|---|---|---|---|
+| **untouched** | **0.4274** | 0.6775 | 0.6308 |
+| guided filter, r4, level 0.4 | 0.4276 | 0.6778 | 0.6308 |
+| intensity snap, band 2, bias +0.10 | 0.3933 | 0.6541 | 0.6013 |
+| intensity snap, band 3, bias 0.00 | 0.3491 | 0.6330 | 0.5515 |
+| intensity snap, band 5, bias -0.10 | 0.2739 | 0.6212 | 0.4410 |
+
+The guided filter is inert. **The intensity snap actively destroys masks**, and
+monotonically in how much boundary it is allowed to move.
+
+The gap between 0.9995 synthetic and a 0.023 SQ *loss* on real data is the whole
+finding. The synthetic filament had a hard edge. Real filaments fade into the
+disk over several pixels, and the annotated boundary is a judgement about where
+the fade stops counting as filament — not a level set of intensity. Snapping
+moves the mask onto a real edge that is not the one the annotator drew.
+
+### Five independent confirmations of one thing
+
+| experiment | mechanism | result |
+|---|---|---|
+| exp_009 | refiner on synthetic damage | learned its task, lost PQ |
+| exp_018 | refiner on real errors | learned nothing, lost 0.031 |
+| exp_017 | sub-pixel cut of the mask field | no better than a whole-pixel erosion |
+| exp_027 | crop verifier | 72% at finding filaments, 17% against the reference annotator |
+| exp_029 | snap to the physical edge | destroys masks |
+
+Each attacked the problem from a different direction and each failed at the same
+place. **What the metric rewards is agreement with one person's judgement about
+where an ambiguous boundary lies, and that judgement is not recoverable from the
+image.** No post-hoc method can reach it, which is why all five fail regardless
+of how much information they are given or whether they are trained at all.
+
+The only remaining lever is to train the detector to imitate the annotators
+better than it currently does — which is what exp_010 was for, and what it did
+not get to do.

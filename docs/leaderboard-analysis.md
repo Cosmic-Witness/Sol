@@ -1968,3 +1968,34 @@ of how much information they are given or whether they are trained at all.
 The only remaining lever is to train the detector to imitate the annotators
 better than it currently does — which is what exp_010 was for, and what it did
 not get to do.
+
+## exp_030 — averaging the two models' masks (negative result)
+
+The last idea available without training, and the only combination exp_021 never
+tried: it fused at the level of which instances to emit and always chose one
+model's mask whole. Averaging is not an attempt to find the right boundary — which
+exp_029 showed is not in the image — but variance reduction, which needs no
+knowledge of where the boundary is.
+
+618 of A's 836 masks had a partner in B at IoU 0.5, so the opportunity was there.
+
+| rule | PQ | SQ | RQ |
+|---|---|---|---|
+| **A alone** | **0.4415** | 0.6836 | 0.6458 |
+| distance-transform midpoint | 0.4410 | **0.6850** | 0.6438 |
+| union | 0.4393 | 0.6824 | 0.6437 |
+| intersection | 0.4380 | 0.6836 | 0.6408 |
+
+The midpoint does improve mask quality, by +0.0014 SQ, and loses it again on RQ.
+On synthetic masks straddling a known truth the same operation was worth +0.20
+IoU; here it is worth 1/140th of that.
+
+**The two models lean the same way.** Variance reduction requires the errors to
+be independent, and these two were trained on the same annotations, so they
+inherited the same idea of where a filament ends. Averaging correlated errors
+does not cancel them.
+
+That is the eighth result today converging on one statement: the residual is not
+error in the ordinary sense — not noise to average away, not a bias to correct,
+not a boundary to find — but disagreement about a judgement, and every model
+trained on these labels inherits the same one.

@@ -1680,3 +1680,74 @@ None of these numbers are comparable to exp_002's, whose validator rasterised
 ground truth at 1280/4 = 320 against this one's 2048/2 = 1024. PQ from
 `experiments/exp_005_postproc/src/nearmiss.py` is the only common measure, and it
 is what the decision rests on.
+
+## exp_010 on the leaderboard — worse on validation, equal in public
+
+The session-1 checkpoint, evaluated by the same sweep that fixed exp_002's
+operating point. It prefers a different one: **no erosion**, where exp_002 needs
+a pixel of it. That is the polygon offset showing through — the new model's masks
+are less fat, so the old trim now overshoots — even though `mask_ratio=2` kept
+the correction mostly below the loss grid.
+
+| | val PQ | SQ | RQ | TP | FP | FN | operating point | public |
+|---|---|---|---|---|---|---|---|---|
+| exp_002 | 0.4404 | 0.6843 | 0.6436 | 845 | 456 | 480 | conf 0.35, grow -1 | **0.36** |
+| exp_010 | 0.4274 | 0.6776 | 0.6307 | 766 | 338 | 559 | conf 0.30, grow 0 | **0.36** |
+
+**Validation is 0.013 worse and the public score is identical**, which breaks the
+offset this project had been treating as a constant: 0.078 for exp_002, 0.067 for
+exp_010. The 2048-trained model transfers better than the 1280-trained one, and
+the local split is underrating it.
+
+The two also fail in opposite directions — exp_002 buys recall with false
+positives, exp_010 buys precision with misses — which is the textbook setup for
+an ensemble.
+
+## exp_021 — the two detectors make the same mistakes (negative result)
+
+| rule | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|
+| exp_002 alone | 0.4404 | 0.6843 | 0.6436 | 845 | 456 | 480 |
+| exp_010 alone | 0.4274 | 0.6776 | 0.6307 | 766 | 338 | 559 |
+| union at both floors | 0.4124 | 0.6805 | 0.6060 | 869 | 674 | 456 |
+| agreement gating, best of four | 0.3740 | 0.6782 | 0.5514 | 898 | 1034 | 427 |
+| **exp_002, unconfirmed needs 0.55** | **0.4411** | 0.6842 | 0.6448 | 844 | 449 | 481 |
+
+**+0.0007.** Noise.
+
+The diagnostic is the last row. Requiring exp_010 to confirm each of exp_002's
+detections, and holding the unconfirmed ones to a much higher bar, removes
+**seven false positives out of 456**. exp_010 confirms essentially all of them.
+
+The errors are not decorrelated; they are the same errors. exp_014 predicted this
+and it should have been foreseen: most false positives are orphans against the
+label noise floor — real filaments the annotator did not mark. Both models find
+them because they are genuinely there, and no amount of cross-model agreement
+removes something both models are right about.
+
+(The agreement rules were also mis-specified: they admitted any candidate with a
+partner regardless of its own confidence, which is why false positives reached
+1034. Fixing that would not touch the seven-out-of-456 finding.)
+
+## Where the project stands
+
+Every route that does not retrain the detector is now measured and closed:
+threshold tuning, spine seeding, disk masking, sub-pixel trimming by erosion and
+by logit cut, calibrated emission, dihedral TTA, consensus targets, two
+second-stage refiners, a field-profile re-ranker, and a two-model ensemble. The
+reason is the same in almost every case, and it was established by exp_013 and
+exp_014 before most of them were tried: **half the remaining error is not model
+error.**
+
+What did move is the one thing with a mechanism behind it. exp_010 matched the
+best public score on 62 unannealed epochs of one change out of three, from a
+model whose validation score was worse. It has headroom that nothing else does,
+and reaching it needs three things this session could not supply:
+
+1. **A learning-rate schedule that completes.** 400 epochs at 11.5 minutes is 77
+   hours against a 30-hour quota; the run never left its peak learning rate.
+2. **Full-resolution mask supervision.** It does not fit on a single T4 at 2048,
+   at batch 1 or batch 2, so the polygon offset stays mostly below the loss grid.
+   The routes to it are a smaller backbone or two T4s splitting the batch.
+3. **Enough epochs to converge**, which at 11.5 minutes each is the same
+   constraint as the first.

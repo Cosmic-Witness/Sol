@@ -1815,3 +1815,71 @@ want the mask grown rather than trimmed is wrong — they want it left alone, wh
 is what a correctly rasterised target should produce.
 
 The operating point is settled and worth no further sweeping.
+
+## exp_025-027 — the verifier is good at the wrong question (negative result)
+
+The premise: 83.2% of ground truth is covered by some candidate, only 64% is
+emitted, and a perfect re-ranker over the existing pool would score about 0.55
+public. exp_019 failed at that from fifteen numbers; a classifier seeing the
+image crop should do better, and it does.
+
+13413 crops harvested at a 0.05 floor, 128 pixels square, two channels
+(photograph and proposed mask). An 827k-parameter CNN, trained on TPU, selected
+on validation average precision rather than loss.
+
+**As a classifier it works.** Overall AP is 0.7776 against confidence's 0.7770 —
+nothing, because that is dominated by high-confidence candidates never in
+question. Restricted to the band promotion draws from:
+
+| below confidence 0.30 | AP |
+|---|---|
+| base rate | 0.3442 |
+| raw confidence | 0.4552 |
+| **verifier** | **0.5761** |
+
+Promoting its top 100 in-band candidates is 72.0% correct; its top 300, 61.3%.
+Break-even is 33%. exp_019 managed +0.010 AP overall and could promote nothing;
+this is +0.121 where it counts.
+
+**As an emission rule it fails completely.**
+
+| rule | PQ | TP | FP | FN |
+|---|---|---|---|---|
+| **confidence >= 0.30** | **0.4274** | 768 | 342 | 557 |
+| or verifier >= 0.5 | 0.3865 | 868 | 838 | 457 |
+| or verifier >= 0.7 | 0.4192 | 781 | 419 | 544 |
+| or verifier >= 0.9 | 0.4274 | 768 | 342 | 557 |
+| verifier >= 0.5 alone | 0.3676 | 806 | 829 | 519 |
+
+Promotion buys 100 true positives for 496 false ones. **17% precision, against
+the 72% the crop measurement promised.**
+
+### The gap between those two numbers is the annotator disagreement
+
+The cause is a labelling decision made deliberately and wrongly. A crop was
+labelled positive when *any* annotator drew a filament there, on the reasoning
+that labelling against one would teach the classifier to call another's filament
+a false positive. But PQ scores each record against **one** annotator. The
+verifier therefore learned "is there a filament here that somebody would draw",
+which it does at 72%, while the metric asks "did *this* annotator draw it".
+
+72% against 17% is that difference, measured directly, and it is the largest
+single number this project has on the cost of annotator disagreement.
+
+### This overturns the correction made earlier today
+
+`docs/strategy.md` recorded a correction: that exp_014's label-noise ceiling
+applied to false positives but not to misses, because only 2.1% of truth is
+invisible and the rest is merely ranked too low. The first half stands. **The
+second half is now refuted.** The low-ranked candidates are rankable, and a
+classifier can identify them, and they are real filaments — they are simply not
+in the ground truth being scored against. Promoting them cannot help however
+good the classifier becomes.
+
+Relabelling against the specific record would not rescue it, because the two
+classes are the same filaments: what separates them is which person looked, not
+anything visible in the image.
+
+**The oracle of 0.55 from perfect re-ranking is therefore not reachable by
+re-ranking.** It assumed the 1102 covered truths could be selected; selecting
+them requires distinguishing them from candidates that are indistinguishable.

@@ -13,7 +13,7 @@
     "filament-segmentation-2026"
   ],
   "kernel_sources": [
-    "cosmicwitness/sol-exp002-yolo-seg"
+    "cosmicwitness/sol-exp010-polygon"
   ],
   "model_sources": []
 }

@@ -1632,3 +1632,51 @@ tail. The 305 recoverable truths sit among roughly 1700 discarded candidates at 
 **The ranking lever is closed by the same route as the others.** Adding
 information helped the metric and not the decision, because the decision needs
 precision in a specific region and the information is diffuse.
+
+## exp_010 session 1 — the run did not test the hypothesis it was built to test
+
+Twelve hours on a T4, ending at Kaggle's cap with `best.pt` and `last.pt`
+intact in the kernel output, which is what putting `runs/` under
+`/kaggle/working` was for. Sixty-two epochs of four hundred, at 11.5 minutes
+each.
+
+`runs/polygon/args.yaml` records what actually ran:
+
+```
+imgsz: 2048   batch: 2   mask_ratio: 2   optimizer: AdamW   lr0: 0.001   cos_lr: true
+```
+
+**`mask_ratio: 2`.** The memory ladder is `(1, batch 2) -> (1, batch 1) -> (2,
+batch 2)`, so landing on the third rung means both full-resolution attempts ran
+out of memory, at batch 1 as well as batch 2. Full-resolution mask supervision
+does not fit on a T4 at 2048, and the run silently took the fallback. Kaggle
+truncates a long log to its tail, so the ladder's own messages are gone; the
+args file is the surviving evidence.
+
+The consequence is the one the ladder existed to prevent. At `mask_ratio=2` the
+mask loss is computed on a 1024 grid, where the half-pixel polygon correction is
+a quarter of a pixel — still below what the grid can represent. **The corrected
+targets were inert again.** What this session tested was training at 2048 with
+`mask_ratio=2`, which is one of the three changes, not three.
+
+| epoch | seg loss | box mAP50 | mask mAP50 | mask mAP50-95 | lr |
+|---|---|---|---|---|---|
+| 1 | 1.686 | 0.634 | 0.586 | 0.188 | 3.3e-4 |
+| 24 | 1.577 | 0.658 | 0.618 | 0.199 | 9.9e-4 |
+| 62 | 1.533 | 0.657 | 0.619 | 0.194 | **9.4e-4** |
+
+Training loss falls; validation is flat inside its noise. Sixty-two epochs bought
+0.033 of mask mAP50.
+
+**And the learning rate never annealed.** After twelve hours it sits at 9.4e-4 of
+its 1e-3 peak, because the cosine is stretched over 400 epochs and 400 epochs at
+11.5 minutes is seventy-seven hours against a weekly quota of thirty. Removing
+the time budget — right for other reasons — also removed the rescaling that gave
+exp_002 a complete anneal inside its clock. A schedule that cannot finish is a
+model that never gets its low-learning-rate consolidation, and that is where much
+of the final accuracy of a fine-tune lives.
+
+None of these numbers are comparable to exp_002's, whose validator rasterised
+ground truth at 1280/4 = 320 against this one's 2048/2 = 1024. PQ from
+`experiments/exp_005_postproc/src/nearmiss.py` is the only common measure, and it
+is what the decision rests on.

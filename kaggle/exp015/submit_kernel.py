@@ -51,6 +51,14 @@ def main() -> None:
     if not weights:
         weights = sorted(Path("/kaggle/input").rglob("checkpoints/best.pt"))
     if not weights:
+        # Worth knowing exactly what did mount. exp_010 is cancelled at the
+        # twelve-hour cap rather than completing, and whether Kaggle publishes a
+        # cancelled kernel's output as an attachable source decides whether the
+        # three-session resume plan works at all -- the self-reference probe only
+        # ever tested a kernel that finished.
+        print("=== /kaggle/input ===", flush=True)
+        for path in sorted(Path("/kaggle/input").rglob("*"))[:60]:
+            print(f"  {path}", flush=True)
         raise SystemExit("no checkpoint attached")
     print(f"data {root}\nweights {weights[0]}", flush=True)
 

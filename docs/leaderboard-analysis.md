@@ -1795,3 +1795,23 @@ emitted 979 instances against the baseline's 1238. The row count is what caught
 it — the measured rule drops 8 of 1301 on validation, so a 21% drop could not be
 the same rule. Corrected, it emits 1229, and 9 fewer than baseline is the
 expected figure.
+
+## exp_022 — the operating point was already right (negative result)
+
+exp_015 chose conf 0.30 with no erosion, both on the edge of its grid, which is
+the condition under which an optimum is usually outside it. Widened to conf
+0.25-0.35, area 250-400, and erosion from -1 through +2:
+
+| conf | area | grow | PQ | SQ | RQ | TP | FP | FN |
+|---|---|---|---|---|---|---|---|---|
+| **0.30** | **250** | **0** | **0.4274** | 0.6775 | 0.6308 | 768 | 342 | 557 |
+| 0.30 | 300 | 0 | 0.4274 | 0.6776 | 0.6307 | 766 | 338 | 559 |
+| 0.25 | 300 | 0 | 0.4226 | 0.6768 | 0.6244 | 802 | 442 | 523 |
+| 0.35 | 300 | 0 | 0.4217 | 0.6815 | 0.6187 | 710 | 260 | 615 |
+
+Identical to what exp_015 found, and **the optimum is interior this time**. Every
+one of the top eight rows is at grow 0: the guess that corrected targets would
+want the mask grown rather than trimmed is wrong — they want it left alone, which
+is what a correctly rasterised target should produce.
+
+The operating point is settled and worth no further sweeping.

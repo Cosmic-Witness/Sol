@@ -1,0 +1,16 @@
+{
+  "id": "cosmicwitness/sol-exp028-recall-probe",
+  "title": "sol exp028 recall probe",
+  "code_file": "probe_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["cosmicwitness/sol-exp010-session1"],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": ["cosmicwitness/sol-exp026-verifier-train"],
+  "model_sources": []
+}

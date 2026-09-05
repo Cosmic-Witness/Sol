@@ -59,7 +59,13 @@ def main() -> None:
     parser.add_argument("--images", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--conf-a", type=float, default=0.35)
-    parser.add_argument("--conf-b", type=float, default=0.30)
+    # The validation sweep checked agreement against exp_010's whole cached
+    # pool, which nearmiss dumped at a 0.05 floor -- not against its candidates
+    # at its own operating point. Running it at 0.30 here made the confirmation
+    # set far smaller, vetoed 312 candidates instead of a handful, and emitted
+    # 979 instances where the baseline emits 1238. That is a different rule from
+    # the one measured, so the floor has to match the one the measurement used.
+    parser.add_argument("--conf-b", type=float, default=0.05)
     parser.add_argument("--grow-a", type=int, default=-1)
     parser.add_argument("--grow-b", type=int, default=0)
     parser.add_argument("--veto", type=float, default=0.55)

@@ -1883,3 +1883,37 @@ anything visible in the image.
 **The oracle of 0.55 from perfect re-ranking is therefore not reachable by
 re-ranking.** It assumed the 1102 covered truths could be selected; selecting
 them requires distinguishing them from candidates that are indistinguishable.
+
+## exp_028 — the test labels are not more inclusive (negative result, and a useful one)
+
+Every negative result today was measured against validation, where each record is
+one annotator's opinion, and the verifier failed precisely because it learned
+"would somebody draw this" rather than "did this person draw it". That left one
+structural possibility unexamined: if the test ground truth were more inclusive
+than a single annotator — a consensus, a more thorough labeller, a different
+threshold for what counts — then a high-recall rule would score better in public
+than locally, and every operating point tuned on this validation split would be
+tuned against the wrong target.
+
+Submitted deliberately: the verifier promoting at gate 0.50, 1624 instances
+against the baseline's 1238, and **0.041 PQ worse on validation**. Faithful
+transfer predicts 0.32; a more inclusive test set predicts 0.36 or better.
+
+**It scored 0.32.**
+
+| submission | local PQ | public | gap |
+|---|---|---|---|
+| exp_002 | 0.4404 | 0.36 | 0.078 |
+| exp_010 | 0.4274 | 0.36 | 0.067 |
+| **exp_028 recall probe** | **0.3865** | **0.32** | **0.067** |
+
+The hypothesis is refuted, and the refutation is worth the submission. Three
+points now bracket the validation-to-public offset at 0.067 to 0.078, including
+one deliberately pushed 0.04 below the others, so **validation is a faithful
+predictor of the leaderboard across a range of operating points, not just near
+the optimum.**
+
+Two consequences. The label-noise ceiling is real rather than an artefact of how
+this project split its data. And a public 0.46 requires a validation PQ near
+0.53, with no shortcut through the metric available: every point has to be earned
+on masks the reference annotator actually drew.

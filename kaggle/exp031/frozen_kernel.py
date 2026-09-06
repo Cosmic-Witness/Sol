@@ -67,7 +67,7 @@ RUN_NAME = "frozen"
 
 ANNOTATION_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
 IMGSZ = 2048
-EPOCHS = 75
+EPOCHS = 50
 FREEZE = 11          # yolo11 backbone is layers 0-10; the neck and head train
 
 
@@ -122,13 +122,23 @@ def main() -> None:
     # 1.00, roughly so at 1.14, invisible at 2.00. So the ladder gives up
     # training resolution before supervision resolution, and never reaches
     # mask_ratio=2 at all.
-    # Measured, in clean processes: the failing allocation is independent of
-    # batch size (halving it changed 3.11 GiB by nothing) and linear in image
-    # size (2048 -> 1792 moved it 3.11 -> 2.75, a factor of 0.88 against 0.875).
-    # So batch is not a lever here and imgsz is the only supported one. Each rung
-    # coarsens the loss grid; even the last is finer than the mask_ratio=2 that
-    # made exp_010's central change inert at 2.00.
-    attempts = ((2048, 2, 1.00), (1792, 2, 1.14), (1536, 2, 1.33), (1280, 4, 1.60))
+    # What the previous run established. The failing allocation tracks the number
+    # of instances in a batch, not the batch size: at 1280 batch 4 it trained
+    # five epochs and then died inside the mask loss on a crowded photograph,
+    # wanting 1.20 GiB. That also explains why 2048 looked batch-independent --
+    # a single crowded image dominates either way.
+    #
+    # 1536 batch 2 missed by fifty megabytes, 2.02 GiB wanted against 1.97 free,
+    # and batch 1 at 1536 was never tried. Batch does not shrink the failing
+    # allocation but it does shrink everything competing with it, which is the
+    # fifty megabytes. So: the finest grid that has a chance, at the smallest
+    # batch, and one coarser rung behind it.
+    #
+    # Fifty epochs rather than seventy-five, because the cosine has to reach its
+    # floor inside the twelve-hour cap. exp_010 ran a schedule sized for 400,
+    # reached 62, and never left its peak learning rate; a shorter schedule that
+    # completes is worth more than a longer one that is cut off.
+    attempts = ((1536, 1, 1.33), (1280, 1, 1.60))
     for imgsz, batch, grid in attempts:
         print(f"\n=== attempting imgsz {imgsz} batch {batch} "
               f"(loss grid {grid:.2f} native px) ===", flush=True)

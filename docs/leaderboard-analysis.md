@@ -2043,3 +2043,30 @@ was +0.0069.** The work has been moving within the noise of a single displayed
 digit, and closing the gap needs something an order of magnitude larger than
 anything measured here — not an accumulation of the corrections that have been
 tried.
+
+## The public source dataset is not a usable lever (and would be cheating)
+
+The competition's 707 training photographs are a subset of MAGFiLO, whose
+abstract advertises "10,244 annotated filaments from 1,593 observations". If the
+public release held roughly twice the competition's training data, that would be
+a far larger intervention than any correction attempted here — doubling the
+training set is a different order of change from re-tuning a threshold.
+
+It is not, for two independent reasons.
+
+**The public release contains the test annotations.** MAGFiLO v1.0 is on Harvard
+Dataverse (DOI 10.7910/DVN/J6JNVK) and its data-availability statement is
+explicit that no portion is withheld. The competition's 180 test photographs are
+therefore in it, with their polygons. Training on MAGFiLO means training on the
+labels being scored against. That is leakage rather than external data, and it is
+not something to do regardless of what the rules permit.
+
+**And the clean remainder is negligible.** The 1,593 figure counts annotation
+passes, not photographs: the release holds **958 unique observations** (57.20%
+annotated once, 19.31% twice, 23.49% three times). The competition already uses
+887 of them, 707 train and 180 test. Excluding the test set leaves about 71
+additional photographs — a 10% increase, not a doubling.
+
+Recorded because the arithmetic is not obvious from the abstract, and because
+"use the public source dataset" is the first idea anyone will have on reading
+that the competition data is a subset of something larger.

@@ -1,0 +1,16 @@
+{
+  "id": "cosmicwitness/sol-exp010-polygon",
+  "title": "sol exp010 polygon",
+  "code_file": "polygon_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": ["cosmicwitness/sol-exp002-yolo-seg"],
+  "model_sources": []
+}

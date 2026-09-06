@@ -26,7 +26,10 @@ import sys
 from pathlib import Path
 
 REPO_URL = "https://github.com/Cosmic-Witness/Sol"
-BRANCH = "exp-001-baseline"
+# The kernel trains from whatever this branch holds, so iterating means
+# pushing here and re-pushing the kernel. Point it back at exp-001-baseline
+# once this work merges.
+BRANCH = "claude/kaggle-credentials-setup-f7nudy"
 REPO_DIR = Path("/kaggle/working/Sol")
 
 WORKING = Path("/kaggle/working")
@@ -90,6 +93,25 @@ def report_environment() -> None:
     if not torch.cuda.is_available():
         # Training on CPU here would burn the 12-hour budget for nothing.
         raise SystemExit("no GPU attached; set the accelerator to T4 and re-run")
+
+    # torch.cuda.is_available() is not enough. A Tesla P100 reports True here and
+    # then dies at the first convolution with "no kernel image is available for
+    # execution on the device", because sm_60 is below the floor of the cu128
+    # build in the default Kaggle image. The first run of this kernel lost 24
+    # minutes to exactly that. kernel-metadata.json now requests a T4 via
+    # machine_shape, but Kaggle is free to hand over something else, so the
+    # assumption is checked rather than trusted.
+    major, minor = torch.cuda.get_device_capability()
+    capability = major * 10 + minor
+    supported = torch.cuda.get_arch_list()
+    print(f"device      : {torch.cuda.get_device_name(0)} (sm_{capability})", flush=True)
+    print(f"torch archs : {' '.join(supported)}", flush=True)
+    if f"sm_{capability}" not in supported:
+        raise SystemExit(
+            f"this torch build has no kernels for sm_{capability} "
+            f"({torch.cuda.get_device_name(0)}). It supports {supported}. "
+            f"Set machine_shape to NvidiaTeslaT4 in kernel-metadata.json."
+        )
     print(f"data root exists: {DATA_ROOT.exists()}", flush=True)
     print("=" * 70, flush=True)
 

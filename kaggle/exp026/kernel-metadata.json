@@ -1,0 +1,16 @@
+{
+  "id": "cosmicwitness/sol-exp026-verifier-train",
+  "title": "sol exp026 verifier train",
+  "code_file": "train_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": true,
+  "machine_shape": "Tpu1VmV38",
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": ["cosmicwitness/sol-exp025-verifier-harvest"],
+  "model_sources": []
+}

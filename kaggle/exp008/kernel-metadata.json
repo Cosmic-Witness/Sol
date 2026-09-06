@@ -1,0 +1,16 @@
+{
+  "id": "cosmicwitness/sol-exp008-refiner",
+  "title": "sol exp008 refiner",
+  "code_file": "refiner_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": true,
+  "machine_shape": "Tpu1VmV38",
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": [],
+  "model_sources": []
+}

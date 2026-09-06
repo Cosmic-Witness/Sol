@@ -1,0 +1,18 @@
+{
+  "id": "cosmicwitness/sol-exp018-refine-real-eval",
+  "title": "sol exp018 refine real eval",
+  "code_file": "refine_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": [
+    "cosmicwitness/sol-exp002-yolo-seg",
+    "cosmicwitness/sol-exp012-refiner-real"
+  ],
+  "model_sources": []
+}

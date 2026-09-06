@@ -111,6 +111,81 @@ def make_split(
     )
 
 
+def make_temporal_split(
+    annotation_path: str, val_fraction: float = 0.15, buffer_days: int = 7,
+    seed: int = SPLIT_SEED
+) -> Split:
+    """Split by contiguous time blocks, with a buffer between the folds.
+
+    Why the grouped split is not enough
+    -----------------------------------
+    `make_split` guarantees that no photograph appears in both folds, which
+    removes the annotator-duplicate leak. It does not remove the *temporal* leak,
+    and that one is larger. A filament survives on the disk for days to weeks,
+    and GONG images the Sun continuously from six stations, so two observations a
+    day apart usually contain the same physical filaments wearing slightly
+    different seeing.
+
+    Measured on the grouped split: 43% of validation observations have a training
+    observation within one day, 64% within two, 94% within a week. Validation is
+    therefore scoring the model partly on filaments it trained on, and reads
+    optimistically — which is consistent with roughly a third of validation gains
+    reaching the leaderboard.
+
+    A per-observation buffer cannot fix this: only 6 of 106 validation
+    observations sit more than a week from any training observation, so
+    enforcing a gap by exclusion would leave nothing to validate on. Contiguous
+    blocks are the way — hold out whole stretches of the archive, and drop the
+    observations inside `buffer_days` of a boundary rather than assigning them.
+
+    The archive spans 2011 to 2022, so blocks are cut on date order and the
+    buffer discards only the seam.
+    """
+    import datetime as _dt
+
+    stem_to_ids, _ = load_records(annotation_path)
+
+    def observed(stem: str) -> _dt.date:
+        return _dt.datetime.strptime(stem[:8], "%Y%m%d").date()
+
+    ordered = sorted(stem_to_ids, key=observed)
+    n_val = max(1, round(len(ordered) * val_fraction))
+
+    # A single contiguous block would tie the fold to one part of the solar
+    # cycle, and activity varies enormously across it. Several blocks spread
+    # through the archive keep both folds representative.
+    n_blocks = 5
+    block = n_val // n_blocks
+    rng = np.random.default_rng(seed)
+    starts = sorted(rng.choice(len(ordered) - block, size=n_blocks, replace=False))
+
+    val_idx: set[int] = set()
+    for start in starts:
+        val_idx.update(range(start, min(start + block, len(ordered))))
+
+    val_stems = [ordered[i] for i in sorted(val_idx)]
+    val_dates = [observed(s) for s in val_stems]
+
+    train_stems = []
+    for index, stem in enumerate(ordered):
+        if index in val_idx:
+            continue
+        date = observed(stem)
+        # Discard the seam rather than train on it.
+        if any(abs((date - v).days) <= buffer_days for v in val_dates):
+            continue
+        train_stems.append(stem)
+
+    train_stems.sort()
+    val_stems.sort()
+    return Split(
+        train_stems=train_stems,
+        val_stems=val_stems,
+        train_image_ids=[i for s in train_stems for i in stem_to_ids[s]],
+        val_image_ids=[i for s in val_stems for i in stem_to_ids[s]],
+    )
+
+
 def assert_disjoint(split: Split) -> None:
     """Guard against leakage. Called by the training entry point."""
     overlap = set(split.train_stems) & set(split.val_stems)

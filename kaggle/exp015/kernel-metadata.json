@@ -9,7 +9,7 @@
   "enable_tpu": false,
   "enable_internet": true,
   "dataset_sources": [
-    "cosmicwitness/sol-exp010-session1"
+    "cosmicwitness/sol-exp031-frozen-1536"
   ],
   "competition_sources": [
     "filament-segmentation-2026"

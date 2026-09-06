@@ -1999,3 +1999,47 @@ That is the eighth result today converging on one statement: the residual is not
 error in the ordinary sense — not noise to average away, not a bias to correct,
 not a boundary to find — but disagreement about a judgement, and every model
 trained on these labels inherits the same one.
+
+## exp_031 — the first completed schedule, and what it settles
+
+exp_010 ran a cosine sized for 400 epochs, reached 62, and never left its peak
+learning rate; it also fell silently to `mask_ratio=2`, where the polygon
+correction is a quarter of a pixel on the loss grid. This run fixed both, at the
+cost of training resolution.
+
+Getting it to run took five launches and two wrong diagnoses. Freezing the
+backbone did *not* buy the memory claimed for it — the failing allocation is not
+backbone activations but one tensor in the mask loss that scales with the number
+of instances in a batch, which is why 2048 appeared batch-independent and why
+1280 at batch 4 trained five epochs and then died on a crowded photograph. A
+loop of attempts inside one process also produced byte-identical failures,
+because `empty_cache()` cannot reclaim what the previous trainer references.
+
+Final configuration: imgsz 1536, batch 1, `mask_ratio=1` (loss grid 1.33 native
+pixels), backbone frozen, 50 epochs, **cosine annealed from 5e-4 to 5.5e-6**.
+
+| | local PQ | SQ | RQ | TP | FP | public |
+|---|---|---|---|---|---|---|
+| exp_002, 1280, truncated | **0.4404** | 0.6843 | 0.6436 | 845 | 456 | 0.36 |
+| **exp_031, 1536, annealed** | **0.4343** | 0.6786 | 0.6400 | 831 | 441 | **0.36** |
+| exp_010, 2048, truncated | 0.4274 | 0.6776 | 0.6308 | 766 | 338 | 0.36 |
+
+Two diagnoses confirmed: **completing the schedule is worth +0.0069** over the
+truncated run at higher resolution, and corrected targets want no erosion (grow 0
+wins at every confidence). One diagnosis still unsupported: training at the
+inference resolution. 1280 remains the best training resolution measured, and
+2048 the worst.
+
+### Four models, one score
+
+exp_002, exp_010, exp_031 and the fusion all score exactly 0.36. Their local
+scores span 0.4274 to 0.4411 — **0.0137, which is narrower than one step of the
+two-decimal leaderboard.** Every model this project has produced is
+indistinguishable in public.
+
+That reframes the remaining distance. A public 0.46 needs a validation PQ near
+0.53: **+0.10 on a scale where the best genuine improvement of the whole effort
+was +0.0069.** The work has been moving within the noise of a single displayed
+digit, and closing the gap needs something an order of magnitude larger than
+anything measured here — not an accumulation of the corrections that have been
+tried.

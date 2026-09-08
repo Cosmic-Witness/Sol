@@ -1,0 +1,20 @@
+{
+  "status": "ok",
+  "implementation": "upstream",
+  "device": "cpu",
+  "size": 256,
+  "instances": 40,
+  "positive_anchors": 400,
+  "chunk_size": 8,
+  "loss": 2.340498685836792,
+  "pass_seconds": [
+    0.7342800999758765,
+    0.6610688000218943
+  ],
+  "saved_storage_bytes": 244371416,
+  "rss_bytes": 780566528,
+  "peak_rss_bytes": 978354176,
+  "cuda_peak_bytes": null,
+  "torch": "2.14.0+cpu",
+  "ultralytics": "8.4.0"
+}

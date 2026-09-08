@@ -1,0 +1,19 @@
+{
+  "id": "cosmicwitness/sol-exp048-mask2-eval",
+  "title": "Sol exp048 mask2 eval",
+  "code_file": "kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [
+    "filament-segmentation-2026"
+  ],
+  "kernel_sources": [
+    "cosmicwitness/sol-exp046-mask2-train"
+  ],
+  "model_sources": []
+}

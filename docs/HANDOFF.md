@@ -1,5 +1,10 @@
 # Solar Filament Segmentation 2026 — complete handoff
 
+> Revision note: [architecture-review.md](architecture-review.md) corrects several
+> architectural and statistical claims below and documents the new exp_032
+> chunked-loss implementation. This handoff remains the historical experiment
+> record; its proposed explanations and future plan are not verified results.
+
 Everything known about the competition, everything tried, every measured
 constant, and a detailed plan for the approach I did not get to. Written for
 someone picking this up cold with no access to the prior conversation.

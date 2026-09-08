@@ -1,0 +1,47 @@
+{
+  "annotation_sha256": "5da9e92b5a1a1947fd5d57adb6688269625c48ec1ef884daf2a01618c9ed54a1",
+  "split_seed": 2026,
+  "fold": "train",
+  "split": "train: 601 observations / 974 records | val: 106 observations / 180 records",
+  "instances": 6874,
+  "min_native_area": 300,
+  "instances_per_record": {
+    "max": 23,
+    "p95": 15.0,
+    "median": 7.0
+  },
+  "crowded_record_ids": [
+    "010101-20131025185414Mh",
+    "010102-20110914063134Lh",
+    "010402-20120703070814Th",
+    "040302-20140807195854Bh",
+    "010402-20120519070814Th"
+  ],
+  "resolutions": {
+    "800": {
+      "erased": 0,
+      "below_scaled_area": 275,
+      "mean_roundtrip_iou": 0.6836241152076913
+    },
+    "1024": {
+      "erased": 0,
+      "below_scaled_area": 266,
+      "mean_roundtrip_iou": 0.8794698873072079
+    },
+    "1280": {
+      "erased": 0,
+      "below_scaled_area": 277,
+      "mean_roundtrip_iou": 0.777811272746362
+    },
+    "1536": {
+      "erased": 0,
+      "below_scaled_area": 274,
+      "mean_roundtrip_iou": 0.8396320897549752
+    },
+    "2048": {
+      "erased": 0,
+      "below_scaled_area": 271,
+      "mean_roundtrip_iou": 1.0
+    }
+  }
+}

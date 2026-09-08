@@ -1,0 +1,16 @@
+{
+  "id": "cosmicwitness/sol-exp034-tpu-forward",
+  "title": "Sol exp034 TPU forward",
+  "code_file": "probe.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": true,
+  "machine_shape": "Tpu1VmV38",
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": ["cosmicwitness/sol-exp002-yolo-seg"],
+  "model_sources": []
+}

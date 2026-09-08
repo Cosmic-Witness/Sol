@@ -1,0 +1,6 @@
+# The adapter depends on the internal criterion API; upgrades require parity tests.
+ultralytics==8.4.0
+pycocotools>=2.0.7
+shapely>=2.0
+pandas>=2.0
+pytest>=8

@@ -71,7 +71,10 @@ def invert_transform(mask: np.ndarray, k: int, mirror: bool) -> np.ndarray:
 
 def predict_views(model, image_path: Path, imgsz: int, conf: float, max_det: int):
     """Run the model over all eight views; return masks in the original frame."""
-    raw = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    # Preserve the historical grayscale JPEG decode, then explicitly repeat it
+    # for Ultralytics 8.4, which no longer expands a 2-D ndarray automatically.
+    grey = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    raw = None if grey is None else np.repeat(grey[..., None], 3, axis=2)
     if raw is None:
         raise SystemExit(f"cannot read {image_path}")
 

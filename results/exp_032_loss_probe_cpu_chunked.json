@@ -1,0 +1,20 @@
+{
+  "status": "ok",
+  "implementation": "chunked",
+  "device": "cpu",
+  "size": 256,
+  "instances": 40,
+  "positive_anchors": 400,
+  "chunk_size": 8,
+  "loss": 2.340498447418213,
+  "pass_seconds": [
+    3.300385699956678,
+    1.2620063999202102
+  ],
+  "saved_storage_bytes": 8716360,
+  "rss_bytes": 334823424,
+  "peak_rss_bytes": 352382976,
+  "cuda_peak_bytes": null,
+  "torch": "2.14.0+cpu",
+  "ultralytics": "8.4.0"
+}

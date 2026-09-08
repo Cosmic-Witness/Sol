@@ -1,5 +1,16 @@
 # Raw results
 
+The new exp_032 reports were produced locally, not on Kaggle:
+
+- `exp_032_resolution_audit.json`: all canonical training annotations, including
+  crowding and nearest-neighbor mask survival/round-trip IoU.
+- `exp_032_loss_probe_cpu.json`: isolated upstream/chunked loss memory and cold/warm
+  execution times. The corresponding child JSON files contain raw measurements;
+  empty `.log` files indicate neither child emitted diagnostics.
+
+These establish implementation/memory behavior, not a new segmentation score.
+Commands and limitations are in `experiments/exp_032_chunked/README.md`.
+
 The JSON each kernel wrote, unedited. Every table in `docs/leaderboard-analysis.md`
 and every number in `docs/strategy.md` is transcribed from a file here, so a
 reader can check the transcription without a Kaggle account and without re-running

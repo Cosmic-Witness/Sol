@@ -1,0 +1,16 @@
+{
+  "id": "cosmicwitness/sol-exp041-tpu-d4-test",
+  "title": "Sol exp041 TPU D4 test",
+  "code_file": "kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": true,
+  "machine_shape": "Tpu1VmV38",
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": ["filament-segmentation-2026"],
+  "kernel_sources": ["cosmicwitness/sol-exp002-yolo-seg", "cosmicwitness/sol-exp039-tpu-validation"],
+  "model_sources": []
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "status": "ok",
+    "implementation": "upstream",
+    "device": "cpu",
+    "size": 256,
+    "instances": 40,
+    "positive_anchors": 400,
+    "chunk_size": 8,
+    "loss": 2.340498685836792,
+    "pass_seconds": [
+      0.7342800999758765,
+      0.6610688000218943
+    ],
+    "saved_storage_bytes": 244371416,
+    "rss_bytes": 780566528,
+    "peak_rss_bytes": 978354176,
+    "cuda_peak_bytes": null,
+    "torch": "2.14.0+cpu",
+    "ultralytics": "8.4.0",
+    "log": "results\\exp_032_loss_probe_cpu_upstream.log"
+  },
+  {
+    "status": "ok",
+    "implementation": "chunked",
+    "device": "cpu",
+    "size": 256,
+    "instances": 40,
+    "positive_anchors": 400,
+    "chunk_size": 8,
+    "loss": 2.340498447418213,
+    "pass_seconds": [
+      3.300385699956678,
+      1.2620063999202102
+    ],
+    "saved_storage_bytes": 8716360,
+    "rss_bytes": 334823424,
+    "peak_rss_bytes": 352382976,
+    "cuda_peak_bytes": null,
+    "torch": "2.14.0+cpu",
+    "ultralytics": "8.4.0",
+    "log": "results\\exp_032_loss_probe_cpu_chunked.log"
+  }
+]
